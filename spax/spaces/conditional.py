@@ -71,7 +71,7 @@ class ConditionalSpace(Space[Any]):
         Propagates the field name to nested spaces in branches.
         """
         super().__set_name__(owner, name)
-        
+
         # Propagate field_name to nested spaces
         if self.true_is_space:
             self.true_branch.field_name = name
@@ -96,7 +96,7 @@ class ConditionalSpace(Space[Any]):
     def validate(self, value: Any) -> Any:
         """
         Validate a value against the appropriate branch.
-        
+
         Note: This method signature matches the base Space class.
         The config object is accessed via the descriptor protocol's __set__.
 
@@ -135,13 +135,13 @@ class ConditionalSpace(Space[Any]):
             raise RuntimeError(
                 f"Failed to evaluate condition for field '{self.field_name}': {e}"
             ) from e
-    
+
         # If the active branch is a Space, validate through it
         if isinstance(active_branch, Space):
             # Ensure nested space has a field_name for error messages
             if active_branch.field_name is None and self.field_name is not None:
                 active_branch.field_name = self.field_name
-            
+
             # For nested Conditionals, pass config through
             if isinstance(active_branch, ConditionalSpace):
                 return active_branch.validate_with_config(value, config)
@@ -159,7 +159,7 @@ class ConditionalSpace(Space[Any]):
     def sample(self) -> Any:
         """
         Sample from this space.
-        
+
         Note: Conditional spaces cannot be sampled independently.
         They require a config object with dependency values already set.
         Use Config.random() instead.

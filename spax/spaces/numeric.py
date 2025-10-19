@@ -91,29 +91,30 @@ class NumberSpace(Space[float]):
                 "Space field_name is None. This should not happen if the Space "
                 "is properly attached to a Config class via __set_name__."
             )
-        
+
         field = self.field_name
 
-        if self.bounds == "both":
-            if not (self.low <= value <= self.high):
-                raise ValueError(
-                    f"{field}: Value {value} must be in [{self.low}, {self.high}]"
-                )
-        elif self.bounds == "low":
-            if not (self.low <= value < self.high):
-                raise ValueError(
-                    f"{field}: Value {value} must be in [{self.low}, {self.high})"
-                )
-        elif self.bounds == "high":
-            if not (self.low < value <= self.high):
-                raise ValueError(
-                    f"{field}: Value {value} must be in ({self.low}, {self.high}]"
-                )
-        elif self.bounds == "none":
-            if not (self.low < value < self.high):
-                raise ValueError(
-                    f"{field}: Value {value} must be in ({self.low}, {self.high})"
-                )
+        match self.bounds:
+            case "both":
+                if not (self.low <= value <= self.high):
+                    raise ValueError(
+                        f"{field}: Value {value} must be in [{self.low}, {self.high}]"
+                    )
+            case "low":
+                if not (self.low <= value < self.high):
+                    raise ValueError(
+                        f"{field}: Value {value} must be in [{self.low}, {self.high})"
+                    )
+            case "high":
+                if not (self.low < value <= self.high):
+                    raise ValueError(
+                        f"{field}: Value {value} must be in ({self.low}, {self.high}]"
+                    )
+            case "none":
+                if not (self.low < value < self.high):
+                    raise ValueError(
+                        f"{field}: Value {value} must be in ({self.low}, {self.high})"
+                    )
 
     def sample(self) -> float:
         """

@@ -119,7 +119,7 @@ class DependencyGraph:
             ValueError: If circular dependencies are detected.
         """
         # Calculate in-degrees
-        in_degree: dict[str, int] = {field: 0 for field in self.spaces}
+        in_degree: dict[str, int] = dict.fromkeys(self.spaces, 0)
 
         for field_name, deps in self.dependencies.items():
             for dep in deps:

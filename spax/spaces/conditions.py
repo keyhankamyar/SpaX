@@ -2,8 +2,9 @@
 Conditions used in conditional search spaces for dependent parameter relationships.
 """
 
-from typing import Any, Callable
-from collections.abc import Iterable
+from collections.abc import Callable, Iterable
+from typing import Any
+
 
 class Condition:
     """
@@ -58,7 +59,7 @@ class FieldCondition(Condition):
         """
         self.field_name = field_name
         self.condition = condition
-    
+
     def __call__(self, config: Any) -> bool:
         """
         Evaluate by checking the specified field.
@@ -380,7 +381,7 @@ class And(Condition):
 
         Args:
             conditions: Iterable of conditions that must all be True.
-            
+
         Raises:
             TypeError: If conditions is not iterable or contains non-Condition objects.
             ValueError: If conditions is empty.
@@ -391,11 +392,11 @@ class And(Condition):
         except TypeError:
             raise TypeError(
                 f"conditions must be iterable, got {type(conditions).__name__}"
-            )
-        
+            ) from None
+
         if not conditions_list:
             raise ValueError("And requires at least one condition")
-        
+
         # Validate all are Condition instances
         for i, cond in enumerate(conditions_list):
             if not isinstance(cond, Condition):
@@ -403,15 +404,12 @@ class And(Condition):
                     f"All conditions must be Condition instances, "
                     f"got {type(cond).__name__} at index {i}"
                 )
-        
+
         self.conditions = conditions_list
 
     def __call__(self, value: Any) -> bool:
         """Check if all conditions are satisfied."""
-        for condition in self.conditions:
-            if not condition(value): # No need to check the rest
-                return False
-        return True
+        return all(condition(value) for condition in self.conditions)
 
     def __repr__(self) -> str:
         """Return a string representation."""
@@ -439,7 +437,7 @@ class Or(Condition):
 
         Args:
             conditions: Iterable of Condition objects where at least one must be True.
-            
+
         Raises:
             TypeError: If conditions is not iterable or contains non-Condition objects.
             ValueError: If conditions is empty.
@@ -450,11 +448,11 @@ class Or(Condition):
         except TypeError:
             raise TypeError(
                 f"conditions must be iterable, got {type(conditions).__name__}"
-            )
-        
+            ) from None
+
         if not conditions_list:
             raise ValueError("Or requires at least one condition")
-        
+
         # Validate all are Condition instances
         for i, cond in enumerate(conditions_list):
             if not isinstance(cond, Condition):
@@ -462,15 +460,12 @@ class Or(Condition):
                     f"All conditions must be Condition instances, "
                     f"got {type(cond).__name__} at index {i}"
                 )
-        
+
         self.conditions = conditions_list
 
     def __call__(self, value: Any) -> bool:
         """Check if any condition is satisfied."""
-        for condition in self.conditions:
-            if condition(value): # No need to check the rest
-                return True
-        return False
+        return any(condition(value) for condition in self.conditions)
 
     def __repr__(self) -> str:
         """Return a string representation."""
@@ -493,7 +488,7 @@ class Not(Condition):
 
         Args:
             condition: The condition to negate.
-            
+
         Raises:
             TypeError: If condition is not a Condition instance.
         """
@@ -532,14 +527,12 @@ class Lambda(Condition):
         Args:
             func: Function that takes a value and returns a boolean.
             description: Optional description for repr.
-            
+
         Raises:
             TypeError: If func is not callable.
         """
         if not callable(func):
-            raise TypeError(
-                f"func must be callable, got {type(func).__name__}"
-            )
+            raise TypeError(f"func must be callable, got {type(func).__name__}")
         self.func = func
         self.description = description
 
