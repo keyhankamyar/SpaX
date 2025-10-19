@@ -65,7 +65,7 @@ class Config(BaseModel):
         """
         super().__init_subclass__(**kwargs)
 
-        # Collect all Space fields defined in this class and parents
+        # Collect all Space fields defined in the parents
         spaces: dict[str, Space] = {}
 
         # Inherit spaces from parent classes
@@ -75,13 +75,7 @@ class Config(BaseModel):
                     if key not in spaces:
                         spaces[key] = value
 
-        # Add spaces from this class (can override parent)
-        for key, value in cls.__dict__.items():
-            if isinstance(value, Space):
-                spaces[key] = value
-
         cls._spaces = spaces
-        cls._dependency_graph = None  # Will be built after model fields are populated
 
     @classmethod
     def __pydantic_init_subclass__(cls, **kwargs: Any) -> None:
@@ -91,38 +85,52 @@ class Config(BaseModel):
         """
         super().__pydantic_init_subclass__(**kwargs)
 
+        # Collect all Space fields defined in this class
+        spaces: dict[str, Space] = {}
+
+        # Add spaces from this class (can override parent and field_info)
         # Infer spaces from type annotations for fields without explicit spaces
         for field_name, field_info in cls.model_fields.items():
-            # Try to infer a space from the annotation
-            inferred_space = infer_space_from_field_info(field_info)
-            annotation = field_info.annotation
-
-            if inferred_space is not None:
-                # Successfully inferred a space
-                cls._spaces[field_name] = inferred_space
-                # Set the field name for the space
-                inferred_space.field_name = field_name
-            elif field_name in cls._spaces:
-                # Defined in a parent class. Because user can not provide both Field and sp.Space
-                pass
-            elif (
-                field_info.default is not PydanticUndefined
-                and field_info.default_factory is None
-            ):
-                # Has a default value, so it's okay to not have a space
-                pass
-            elif isinstance(annotation, type) and issubclass(annotation, Config):
-                # Nested Config type - allowed without explicit space
-                pass
+            if isinstance(field_info.default, Space):
+                space = field_info.default
+                spaces[field_name] = space
+                if space.default is not UNSET:
+                    field_info.default = space.default
+                else:
+                    field_info.default = PydanticUndefined
             else:
-                # No space, no inferrable type, and no default - this is an error
-                raise TypeError(
-                    f"Field '{field_name}' in Config class '{cls.__name__}' has type "
-                    f"'{annotation}' which cannot be automatically converted to a Space. "
-                    f"Please either: (1) define an explicit Space for this field, "
-                    f"(2) provide a default value, or (3) use a supported type "
-                    f"(bool, Literal, int/float with Field constraints)."
-                )
+                # Try to infer a space from the annotation
+                inferred_space = infer_space_from_field_info(field_info)
+                annotation = field_info.annotation
+
+                if inferred_space is not None:
+                    # Successfully inferred a space
+                    spaces[field_name] = inferred_space
+                    # Set the field name for the space
+                    inferred_space.field_name = field_name
+                elif field_name in cls._spaces:
+                    # Defined in a parent class. Because user can not provide both Field and sp.Space
+                    pass
+                elif (
+                    field_info.default is not PydanticUndefined
+                    and not isinstance(field_info.default, Space)
+                ) or field_info.default_factory is not None:
+                    # Has a default value, so it's okay to not have a space
+                    pass
+                elif isinstance(annotation, type) and issubclass(annotation, Config):
+                    # Nested Config type - allowed without explicit space
+                    pass
+                else:
+                    # No space, no inferrable type, and no default - this is an error
+                    raise TypeError(
+                        f"Field '{field_name}' in Config class '{cls.__name__}' has type "
+                        f"'{annotation}' which cannot be automatically converted to a Space. "
+                        f"Please either: (1) define an explicit Space for this field, "
+                        f"(2) provide a default value, or (3) use a supported type "
+                        f"(bool, Literal, int/float with Field constraints)."
+                    )
+
+        cls._spaces.update(spaces)
 
         # Simplify single-choice categorical spaces
         spaces_to_remove = []
