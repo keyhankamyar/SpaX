@@ -270,4 +270,10 @@ def Conditional(
         ...         description="Learning rate for training"
         ...     )
     """
-    return ConditionalSpace(condition, true, false, default, description)
+    return ConditionalSpace(
+        condition=condition,
+        true=true,
+        false=false,
+        default=default,
+        description=description,
+    )

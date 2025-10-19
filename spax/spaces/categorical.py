@@ -230,4 +230,4 @@ def Categorical(
     Returns:
         A CategoricalSpace instance.
     """
-    return CategoricalSpace(choices, default, description)
+    return CategoricalSpace(choices=choices, default=default, description=description)

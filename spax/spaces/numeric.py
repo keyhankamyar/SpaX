@@ -28,12 +28,12 @@ class NumberSpace(Space[float]):
 
     def __init__(
         self,
-        default: float | int | _Unset = UNSET,
         gt: float | None = None,
         ge: float | None = None,
         lt: float | None = None,
         le: float | None = None,
         distribution: DistributionType = "uniform",
+        default: float | int | _Unset = UNSET,
         description: str | None = None,
     ) -> None:
         """
@@ -249,12 +249,12 @@ class IntSpace(NumberSpace):
 
     def __init__(
         self,
-        default: int | _Unset = UNSET,
         gt: int | None = None,
         ge: int | None = None,
         lt: int | None = None,
         le: int | None = None,
         distribution: DistributionType = "uniform",
+        default: int | _Unset = UNSET,
         description: str | None = None,
     ) -> None:
         """
@@ -372,12 +372,12 @@ def Float(
 
 
 def Int(
-    default: int | _Unset = UNSET,
     gt: int | None = None,
     ge: int | None = None,
     lt: int | None = None,
     le: int | None = None,
     distribution: DistributionType = "uniform",
+    default: int | _Unset = UNSET,
     description: str | None = None,
 ) -> Any:
     """
@@ -387,15 +387,23 @@ def Int(
         num_layers: int = Int(ge=1, le=10)
 
     Args:
-        default: Default value to use when not specified.
         gt: Greater than (exclusive lower bound).
         ge: Greater than or equal (inclusive lower bound).
         lt: Less than (exclusive upper bound).
         le: Less than or equal (inclusive upper bound).
         distribution: "uniform", "log", or a Distribution instance.
+        default: Default value to use when not specified.
         description: Human-readable description of this parameter.
 
     Returns:
         An IntSpace instance.
     """
-    return IntSpace(default, gt, ge, lt, le, distribution, description)
+    return IntSpace(
+        gt=gt,
+        ge=ge,
+        lt=lt,
+        le=le,
+        distribution=distribution,
+        default=default,
+        description=description,
+    )
