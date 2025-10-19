@@ -4,16 +4,16 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "spax"
-version = "0.1.0-alpha"
+version = "0.1.1-alpha"
 description = "Declarative search space definition library for ML hyperparameter optimization"
 readme = "README.md"
 requires-python = ">=3.11"
 license = {text = "MIT"}
 authors = [
-    {name = "Your Name", email = "your.email@example.com"}
+    {name = "Keyhan Kamyar", email = "keyhankamyar@gmail.com"}
 ]
 maintainers = [
-    {name = "Your Name", email = "your.email@example.com"}
+    {name = "Keyhan Kamyar", email = "keyhankamyar@gmail.com"}
 ]
 keywords = [
     "hyperparameter-optimization",
