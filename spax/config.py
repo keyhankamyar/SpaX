@@ -65,12 +65,10 @@ class Config(BaseModel):
         """
         super().__init_subclass__(**kwargs)
 
-        # Collect all Space fields defined in the parents
-        spaces: dict[str, Space] = {}
-
         # Inherit spaces from parent classes
+        spaces: dict[str, Space] = {}
         for base in cls.__mro__[1:]:  # Skip cls itself
-            if hasattr(base, "_spaces"):
+            if issubclass(base, Config):
                 for key, value in base._spaces.items():
                     if key not in spaces:
                         spaces[key] = value
