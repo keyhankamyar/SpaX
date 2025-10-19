@@ -12,7 +12,7 @@ from pydantic_core import CoreSchema, core_schema
 
 from spax.distributions import LOG, UNIFORM, NumberDistribution
 
-from .base import Space
+from .base import UNSET, Space, _Unset
 
 BoundsType: TypeAlias = Literal["none", "low", "high", "both"]
 DistributionType: TypeAlias = NumberDistribution | Literal["uniform", "log"]
@@ -28,34 +28,77 @@ class NumberSpace(Space[float]):
 
     def __init__(
         self,
-        low: float,
-        high: float,
-        distribution: DistributionType,
-        bounds: BoundsType,
+        default: float | int | _Unset = UNSET,
+        gt: float | None = None,
+        ge: float | None = None,
+        lt: float | None = None,
+        le: float | None = None,
+        distribution: DistributionType = "uniform",
+        description: str | None = None,
     ) -> None:
         """
         Initialize a numeric space.
 
         Args:
-            low: Lower bound of the numeric range.
-            high: Upper bound of the numeric range.
+            default: Default value to use when not specified.
+            gt: Greater than (exclusive lower bound).
+            ge: Greater than or equal (inclusive lower bound).
+            lt: Less than (exclusive upper bound).
+            le: Less than or equal (inclusive upper bound).
             distribution: Sampling distribution ("uniform", "log", or Distribution instance).
-            bounds: Which boundaries are inclusive ("both", "low", "high", "none").
+            description: Human-readable description of this parameter.
 
         Raises:
-            AssertionError: If arguments have invalid types.
-            ValueError: If distribution string is unrecognized.
+            ValueError: If bounds are not properly specified or invalid.
         """
-        super().__init__()
+        # Validate that exactly one lower bound is specified
+        lower_bounds = [gt, ge]
+        if sum(b is not None for b in lower_bounds) != 1:
+            raise ValueError(
+                "Exactly one of 'gt' (greater than) or 'ge' (greater than or equal) must be specified"
+            )
 
-        assert isinstance(low, (int, float)), f"low must be numeric, got {type(low)}"
-        assert isinstance(high, (int, float)), f"high must be numeric, got {type(high)}"
-        assert low < high, f"low ({low}) must be less than high ({high})"
-        assert bounds in ["none", "low", "high", "both"], f"Invalid bounds: {bounds}"
+        # Validate that exactly one upper bound is specified
+        upper_bounds = [lt, le]
+        if sum(b is not None for b in upper_bounds) != 1:
+            raise ValueError(
+                "Exactly one of 'lt' (less than) or 'le' (less than or equal) must be specified"
+            )
+
+        # Determine low, high, and bounds type
+        if gt is not None:
+            low = gt
+            low_inclusive = False
+        else:
+            low = ge  # type: ignore
+            low_inclusive = True
+
+        if lt is not None:
+            high = lt
+            high_inclusive = False
+        else:
+            high = le  # type: ignore
+            high_inclusive = True
+
+        # Validate range
+        assert isinstance(low, (int, float)), (
+            f"lower bound must be numeric, got {type(low)}"
+        )
+        assert isinstance(high, (int, float)), (
+            f"upper bound must be numeric, got {type(high)}"
+        )
+        assert low < high, f"lower bound ({low}) must be less than upper bound ({high})"
 
         self.low = float(low)
         self.high = float(high)
-        self.bounds = bounds
+        self.low_inclusive = low_inclusive
+        self.high_inclusive = high_inclusive
+
+        # Store original bound specifications for repr
+        self.gt = gt
+        self.ge = ge
+        self.lt = lt
+        self.le = le
 
         # Handle distribution specification
         if isinstance(distribution, str):
@@ -76,6 +119,9 @@ class NumberSpace(Space[float]):
                 f"got {type(distribution).__name__}"
             )
 
+        # Call parent __init__ with default and description
+        super().__init__(default=default, description=description)
+
     def _check_bounds(self, value: float) -> None:
         """
         Check if a value satisfies the boundary conditions.
@@ -94,27 +140,21 @@ class NumberSpace(Space[float]):
 
         field = self.field_name
 
-        match self.bounds:
-            case "both":
-                if not (self.low <= value <= self.high):
-                    raise ValueError(
-                        f"{field}: Value {value} must be in [{self.low}, {self.high}]"
-                    )
-            case "low":
-                if not (self.low <= value < self.high):
-                    raise ValueError(
-                        f"{field}: Value {value} must be in [{self.low}, {self.high})"
-                    )
-            case "high":
-                if not (self.low < value <= self.high):
-                    raise ValueError(
-                        f"{field}: Value {value} must be in ({self.low}, {self.high}]"
-                    )
-            case "none":
-                if not (self.low < value < self.high):
-                    raise ValueError(
-                        f"{field}: Value {value} must be in ({self.low}, {self.high})"
-                    )
+        # Check lower bound
+        if self.low_inclusive:
+            if value < self.low:
+                raise ValueError(f"{field}: Value {value} must be >= {self.low}")
+        else:
+            if value <= self.low:
+                raise ValueError(f"{field}: Value {value} must be > {self.low}")
+
+        # Check upper bound
+        if self.high_inclusive:
+            if value > self.high:
+                raise ValueError(f"{field}: Value {value} must be <= {self.high}")
+        else:
+            if value >= self.high:
+                raise ValueError(f"{field}: Value {value} must be < {self.high}")
 
     def sample(self) -> float:
         """
@@ -127,12 +167,28 @@ class NumberSpace(Space[float]):
 
     def __repr__(self) -> str:
         """Return a detailed string representation."""
-        return (
-            f"{self.__class__.__name__}("
-            f"low={self.low}, high={self.high}, "
-            f"distribution={self.distribution.__class__.__name__}, "
-            f"bounds='{self.bounds}')"
-        )
+        parts = []
+
+        # Add bounds
+        if self.gt is not None:
+            parts.append(f"gt={self.gt}")
+        if self.ge is not None:
+            parts.append(f"ge={self.ge}")
+        if self.lt is not None:
+            parts.append(f"lt={self.lt}")
+        if self.le is not None:
+            parts.append(f"le={self.le}")
+
+        # Add distribution
+        parts.append(f"distribution='{self.distribution.__class__.__name__}'")
+
+        # Add default and description from parent
+        if self.default is not UNSET:
+            parts.append(f"default={self.default!r}")
+        if self.description is not None:
+            parts.append(f"description={self.description!r}")
+
+        return f"{self.__class__.__name__}({', '.join(parts)})"
 
 
 class FloatSpace(NumberSpace):
@@ -188,40 +244,54 @@ class IntSpace(NumberSpace):
     with flexible boundary inclusion rules.
 
     Example:
-        >>> num_layers: int = Int(1, 10, "uniform", "both")
+        >>> num_layers: int = Int(ge=1, le=10)
     """
 
     def __init__(
         self,
-        low: int,
-        high: int,
+        default: int | _Unset = UNSET,
+        gt: int | None = None,
+        ge: int | None = None,
+        lt: int | None = None,
+        le: int | None = None,
         distribution: DistributionType = "uniform",
-        bounds: BoundsType = "both",
+        description: str | None = None,
     ) -> None:
         """
         Initialize an integer space.
 
         Args:
-            low: Lower bound (must be integer).
-            high: Upper bound (must be integer).
+            default: Default value to use when not specified.
+            gt: Greater than (exclusive lower bound, must be integer).
+            ge: Greater than or equal (inclusive lower bound, must be integer).
+            lt: Less than (exclusive upper bound, must be integer).
+            le: Less than or equal (inclusive upper bound, must be integer).
             distribution: Sampling distribution.
-            bounds: Which boundaries are inclusive.
+            description: Human-readable description of this parameter.
 
         Raises:
-            AssertionError: If low or high are not integers.
+            TypeError: If bounds are not integers.
         """
-        assert isinstance(low, int) and not isinstance(low, bool), (
-            f"low must be int, got {type(low)}"
-        )
-        assert isinstance(high, int) and not isinstance(high, bool), (
-            f"high must be int, got {type(high)}"
-        )
+        # Validate that bounds are integers
+        for name, value in [("gt", gt), ("ge", ge), ("lt", lt), ("le", le)]:
+            if value is not None and (
+                not isinstance(value, int) or isinstance(value, bool)
+            ):
+                raise TypeError(
+                    f"{name} must be an integer, got {type(value).__name__}"
+                )
 
-        super().__init__(low, high, distribution, bounds)
+        # Validate default is integer if provided
+        if default is not UNSET and (
+            not isinstance(default, int) or isinstance(default, bool)
+        ):
+            raise TypeError(f"default must be an integer, got {type(default).__name__}")
+
+        super().__init__(default, gt, ge, lt, le, distribution, description)
 
         # Store as integers for cleaner representation
-        self.low = low
-        self.high = high
+        self.low = int(self.low)
+        self.high = int(self.high)
 
     def validate(self, value: Any) -> int:
         """
@@ -272,48 +342,60 @@ class IntSpace(NumberSpace):
 
 
 def Float(
-    low: float,
-    high: float,
+    default: float | _Unset = UNSET,
+    gt: float | None = None,
+    ge: float | None = None,
+    lt: float | None = None,
+    le: float | None = None,
     distribution: DistributionType = "uniform",
-    bounds: BoundsType = "both",
+    description: str | None = None,
 ) -> Any:
     """
     Create a float search space (type-checker friendly).
 
     This function returns Any to satisfy type checkers when used as:
-        learning_rate: float = Float(0.001, 0.1)
+        learning_rate: float = Float(ge=0.001, lt=0.1)
 
     Args:
-        low: Lower bound of the range.
-        high: Upper bound of the range.
+        default: Default value to use when not specified.
+        gt: Greater than (exclusive lower bound).
+        ge: Greater than or equal (inclusive lower bound).
+        lt: Less than (exclusive upper bound).
+        le: Less than or equal (inclusive upper bound).
         distribution: "uniform", "log", or a Distribution instance.
-        bounds: Which boundaries to include ("both", "low", "high", "none").
+        description: Human-readable description of this parameter.
 
     Returns:
         A FloatSpace instance.
     """
-    return FloatSpace(low, high, distribution, bounds)
+    return FloatSpace(default, gt, ge, lt, le, distribution, description)
 
 
 def Int(
-    low: int,
-    high: int,
+    default: int | _Unset = UNSET,
+    gt: int | None = None,
+    ge: int | None = None,
+    lt: int | None = None,
+    le: int | None = None,
     distribution: DistributionType = "uniform",
-    bounds: BoundsType = "both",
+    description: str | None = None,
 ) -> Any:
     """
     Create an integer search space (type-checker friendly).
 
     This function returns Any to satisfy type checkers when used as:
-        num_layers: int = Int(1, 10)
+        num_layers: int = Int(ge=1, le=10)
 
     Args:
-        low: Lower bound of the range.
-        high: Upper bound of the range.
+        default: Default value to use when not specified.
+        gt: Greater than (exclusive lower bound).
+        ge: Greater than or equal (inclusive lower bound).
+        lt: Less than (exclusive upper bound).
+        le: Less than or equal (inclusive upper bound).
         distribution: "uniform", "log", or a Distribution instance.
-        bounds: Which boundaries to include ("both", "low", "high", "none").
+        description: Human-readable description of this parameter.
 
     Returns:
         An IntSpace instance.
     """
-    return IntSpace(low, high, distribution, bounds)
+    return IntSpace(default, gt, ge, lt, le, distribution, description)

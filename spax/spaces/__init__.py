@@ -6,7 +6,7 @@ This package provides space types (Float, Int, Categorical, Conditional) that de
 searchable parameter ranges with validation and sampling capabilities.
 """
 
-from .base import Space
+from .base import UNSET, Space
 from .categorical import Categorical, CategoricalSpace, Choice
 from .conditional import (
     Condition,
@@ -32,6 +32,7 @@ from .numeric import Float, FloatSpace, Int, IntSpace
 __all__ = [
     # Base class
     "Space",
+    "UNSET",
     # Categorical spaces
     "Categorical",
     "CategoricalSpace",

@@ -10,7 +10,14 @@ from typing import Any, ClassVar, Self
 from pydantic import BaseModel, model_validator
 
 from .dependency_graph import DependencyGraph
-from .spaces import CategoricalSpace, ConditionalSpace, FloatSpace, IntSpace, Space
+from .spaces import (
+    UNSET,
+    CategoricalSpace,
+    ConditionalSpace,
+    FloatSpace,
+    IntSpace,
+    Space,
+)
 
 
 class Config(BaseModel):
@@ -117,13 +124,20 @@ class Config(BaseModel):
         else:
             ordered_fields = list(cls._spaces.keys())
 
-        # First pass: validate non-conditional spaces and set temp values
+        # validate non-conditional spaces and set temp values
         for field_name in ordered_fields:
-            if field_name not in data:
-                raise RuntimeError(f"{field_name} not provided in the data")
-
-            value = data[field_name]
             space = cls._spaces.get(field_name)
+
+            # If field not in data, try to use default
+            if field_name not in data:
+                if space is not None and space.default is not UNSET:
+                    value = space.default
+                else:
+                    raise RuntimeError(
+                        f"Field '{field_name}' not provided in the data and has no default value"
+                    )
+            else:
+                value = data[field_name]
 
             if space is None:
                 validated[field_name] = value
@@ -158,28 +172,31 @@ class Config(BaseModel):
         return validated
 
     @classmethod
-    def random(cls) -> Self:
+    def random(cls, use_defaults: bool = True) -> Self:
         """
         Generate a random configuration by sampling all search spaces.
 
         This method samples each Space field randomly according to its
         distribution, and uses default values for non-space fields.
-
         For conditional spaces, respects dependency ordering to ensure
         conditions can be properly evaluated.
-
         For nested Config types in Categorical spaces, recursively
         generates random instances.
+
+        Args:
+            use_defaults: If True, use default values where specified instead of sampling.
+                         If False, always sample randomly even when defaults exist.
 
         Returns:
             A randomly generated Config instance.
 
         Example:
-            >>> config = TrainingConfig.random()
-            >>> print(config.learning_rate)  # Random value in [1e-5, 1e-1]
+            >>> config = TrainingConfig.random()  # Uses defaults where specified
+            >>> config = TrainingConfig.random(use_defaults=False)  # Always samples
         """
-        kwargs: dict[str, Any] = {}
+        from .spaces import UNSET
 
+        kwargs: dict[str, Any] = {}
         # Create a temporary object to hold values for condition evaluation
         temp_obj = type("TempConfig", (), {})()
 
@@ -193,12 +210,17 @@ class Config(BaseModel):
         for field_name in ordered_fields:
             space = cls._spaces[field_name]
 
-            if isinstance(space, ConditionalSpace):
-                # Sample with config context
-                value = space.sample_with_config(temp_obj)
+            # Use default if available and use_defaults is True
+            if use_defaults and space.default is not UNSET:
+                value = space.default
             else:
-                # Regular sampling
-                value = space.sample()
+                # Sample from the space
+                if isinstance(space, ConditionalSpace):
+                    # Sample with config context
+                    value = space.sample_with_config(temp_obj)
+                else:
+                    # Regular sampling
+                    value = space.sample()
 
             # Handle nested Spaces (shouldn't happen but keep for safety)
             while isinstance(value, Space):
@@ -209,7 +231,7 @@ class Config(BaseModel):
 
             # If the sampled value is a Config class (not instance), instantiate it
             if isinstance(value, type) and issubclass(value, Config):
-                value = value.random()
+                value = value.random(use_defaults=use_defaults)
 
             kwargs[field_name] = value
             setattr(temp_obj, field_name, value)
@@ -259,8 +281,9 @@ class Config(BaseModel):
                     "type": space.__class__.__name__,
                     "low": space.low,
                     "high": space.high,
+                    "low_inclusive": space.low_inclusive,
+                    "high_inclusive": space.high_inclusive,
                     "distribution": space.distribution.__class__.__name__,
-                    "bounds": space.bounds,
                 }
             elif isinstance(space, CategoricalSpace):
                 space_info = {

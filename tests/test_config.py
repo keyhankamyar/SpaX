@@ -2,7 +2,15 @@
 
 import pytest
 
-from spax import Categorical, Conditional, Config, EqualsTo, FieldCondition, Float, Int
+from spax import (
+    Categorical,
+    Conditional,
+    Config,
+    EqualsTo,
+    FieldCondition,
+    Float,
+    Int,
+)
 
 
 class TestBasicConfig:
@@ -12,8 +20,8 @@ class TestBasicConfig:
         """Test creating a simple config."""
 
         class SimpleConfig(Config):
-            learning_rate: float = Float(0.001, 0.1)
-            batch_size: int = Int(8, 128)
+            learning_rate: float = Float(ge=0.001, le=0.1)
+            batch_size: int = Int(ge=8, le=128)
 
         config = SimpleConfig(learning_rate=0.01, batch_size=32)
         assert config.learning_rate == 0.01
@@ -23,7 +31,7 @@ class TestBasicConfig:
         """Test that validation happens during creation."""
 
         class SimpleConfig(Config):
-            learning_rate: float = Float(0.001, 0.1)
+            learning_rate: float = Float(ge=0.001, le=0.1)
 
         # Valid
         SimpleConfig(learning_rate=0.01)
@@ -36,7 +44,7 @@ class TestBasicConfig:
         """Test that validation happens on attribute assignment."""
 
         class SimpleConfig(Config):
-            learning_rate: float = Float(0.001, 0.1)
+            learning_rate: float = Float(ge=0.001, le=0.1)
 
         config = SimpleConfig(learning_rate=0.01)
 
@@ -64,14 +72,81 @@ class TestBasicConfig:
         """Test config with multiple space types."""
 
         class MixedConfig(Config):
-            learning_rate: float = Float(0.001, 0.1, "log")
-            batch_size: int = Int(8, 128, "log")
+            learning_rate: float = Float(ge=0.001, le=0.1, distribution="log")
+            batch_size: int = Int(ge=8, le=128, distribution="log")
             optimizer: str = Categorical(["adam", "sgd"])
 
         config = MixedConfig(learning_rate=0.01, batch_size=32, optimizer="adam")
         assert config.learning_rate == 0.01
         assert config.batch_size == 32
         assert config.optimizer == "adam"
+
+
+class TestDefaultValues:
+    """Tests for default value functionality."""
+
+    def test_config_with_defaults(self):
+        """Test creating config with default values."""
+
+        class ConfigWithDefaults(Config):
+            a: int = Int(ge=0, le=100, default=50)
+            b: float = Float(ge=-5.0, lt=0.0, default=-0.5)
+            c: int = Int(gt=-5, lt=5)
+
+        # Only need to provide c
+        config = ConfigWithDefaults(c=0)
+        assert config.a == 50
+        assert config.b == -0.5
+        assert config.c == 0
+
+    def test_override_defaults(self):
+        """Test that provided values override defaults."""
+
+        class ConfigWithDefaults(Config):
+            a: int = Int(ge=0, le=100, default=50)
+            b: float = Float(ge=-5.0, lt=0.0, default=-0.5)
+
+        config = ConfigWithDefaults(a=75, b=-2.0)
+        assert config.a == 75
+        assert config.b == -2.0
+
+    def test_random_uses_defaults(self):
+        """Test that random() uses defaults when use_defaults=True."""
+
+        class ConfigWithDefaults(Config):
+            a: int = Int(ge=0, le=100, default=50)
+            b: float = Float(ge=0.0, le=1.0)
+
+        config = ConfigWithDefaults.random(use_defaults=True)
+        assert config.a == 50  # Should use default
+        assert 0.0 <= config.b <= 1.0  # Should sample
+
+    def test_random_ignores_defaults(self):
+        """Test that random() ignores defaults when use_defaults=False."""
+
+        class ConfigWithDefaults(Config):
+            a: int = Int(ge=0, le=100, default=50)
+            b: float = Float(ge=0.0, le=1.0, default=0.5)
+
+        values_a = []
+        values_b = []
+        for _ in range(20):
+            config = ConfigWithDefaults.random(use_defaults=False)
+            values_a.append(config.a)
+            values_b.append(config.b)
+
+        # Should have sampled different values, not always defaults
+        assert len(set(values_a)) > 1
+        assert len(set(values_b)) > 1
+
+    def test_none_as_default(self):
+        """Test that None can be used as a default value."""
+
+        class ConfigWithNone(Config):
+            value: None | str = Categorical([None, "a", "b"], default=None)
+
+        config = ConfigWithNone()
+        assert config.value is None
 
 
 class TestRandomSampling:
@@ -81,8 +156,8 @@ class TestRandomSampling:
         """Test that random() generates valid configs."""
 
         class SimpleConfig(Config):
-            learning_rate: float = Float(0.001, 0.1)
-            batch_size: int = Int(8, 128)
+            learning_rate: float = Float(ge=0.001, le=0.1)
+            batch_size: int = Int(ge=8, le=128)
 
         for _ in range(10):
             config = SimpleConfig.random()
@@ -107,10 +182,9 @@ class TestRandomSampling:
         """Test that random() produces varying configs."""
 
         class SimpleConfig(Config):
-            value: float = Float(0.0, 100.0)
+            value: float = Float(ge=0.0, le=100.0)
 
         values = [SimpleConfig.random().value for _ in range(20)]
-
         # Should have at least some variation
         assert len(set(values)) > 1
 
@@ -122,26 +196,23 @@ class TestSpaceInfo:
         """Test space info for float spaces."""
 
         class SimpleConfig(Config):
-            learning_rate: float = Float(0.001, 0.1, "log")
+            learning_rate: float = Float(ge=0.001, le=0.1, distribution="log")
 
         info = SimpleConfig.get_space_info()
-
         assert "learning_rate" in info
         lr_info = info["learning_rate"]
         assert lr_info["type"] == "FloatSpace"
         assert lr_info["low"] == 0.001
         assert lr_info["high"] == 0.1
         assert lr_info["distribution"] == "LogDistribution"
-        assert lr_info["bounds"] == "both"
 
     def test_space_info_int(self):
         """Test space info for int spaces."""
 
         class SimpleConfig(Config):
-            batch_size: int = Int(8, 128)
+            batch_size: int = Int(ge=8, le=128)
 
         info = SimpleConfig.get_space_info()
-
         assert "batch_size" in info
         bs_info = info["batch_size"]
         assert bs_info["type"] == "IntSpace"
@@ -155,7 +226,6 @@ class TestSpaceInfo:
             activation: str = Categorical(["relu", "gelu", "silu"])
 
         info = SimpleConfig.get_space_info()
-
         assert "activation" in info
         act_info = info["activation"]
         assert act_info["type"] == "CategoricalSpace"
@@ -169,12 +239,11 @@ class TestSpaceInfo:
             optimizer: str = Categorical(["adam", "sgd"])
             learning_rate: float = Conditional(
                 condition=FieldCondition("optimizer", EqualsTo("sgd")),
-                true=Float(0.1, 1.0),
-                false=Float(0.001, 0.1),
+                true=Float(ge=0.1, le=1.0),
+                false=Float(ge=0.001, le=0.1),
             )
 
         info = SimpleConfig.get_space_info()
-
         assert "learning_rate" in info
         lr_info = info["learning_rate"]
         assert lr_info["type"] == "ConditionalSpace"
@@ -190,7 +259,7 @@ class TestNestedConfig:
         """Test using Config types as categorical choices."""
 
         class OptimizerConfig(Config):
-            lr: float = Float(0.001, 0.1)
+            lr: float = Float(ge=0.001, le=0.1)
 
         class MainConfig(Config):
             optimizer: OptimizerConfig = Categorical([OptimizerConfig])
@@ -204,11 +273,11 @@ class TestNestedConfig:
         """Test multiple config types as choices."""
 
         class AdamConfig(Config):
-            lr: float = Float(0.0001, 0.01)
+            lr: float = Float(ge=0.0001, le=0.01)
 
         class SGDConfig(Config):
-            lr: float = Float(0.01, 0.1)
-            momentum: float = Float(0.0, 0.99)
+            lr: float = Float(ge=0.01, le=0.1)
+            momentum: float = Float(ge=0.0, le=0.99)
 
         class MainConfig(Config):
             optimizer: AdamConfig | SGDConfig = Categorical([AdamConfig, SGDConfig])
@@ -234,8 +303,8 @@ class TestConditionalConfig:
             optimizer: str = Categorical(["adam", "sgd"])
             learning_rate: float = Conditional(
                 condition=FieldCondition("optimizer", EqualsTo("sgd")),
-                true=Float(0.1, 1.0),
-                false=Float(0.001, 0.1),
+                true=Float(ge=0.1, le=1.0),
+                false=Float(ge=0.001, le=0.1),
             )
 
         # SGD uses higher learning rate range
@@ -253,13 +322,12 @@ class TestConditionalConfig:
             optimizer: str = Categorical(["adam", "sgd"])
             learning_rate: float = Conditional(
                 condition=FieldCondition("optimizer", EqualsTo("sgd")),
-                true=Float(0.1, 1.0),
-                false=Float(0.001, 0.1),
+                true=Float(ge=0.1, le=1.0),
+                false=Float(ge=0.001, le=0.1),
             )
 
         for _ in range(20):
             config = SimpleConfig.random()
-
             if config.optimizer == "sgd":
                 assert 0.1 <= config.learning_rate <= 1.0
             else:
@@ -273,12 +341,12 @@ class TestConditionalConfig:
             use_scheduler: bool = Categorical([True, False])
             learning_rate: float = Conditional(
                 condition=FieldCondition("optimizer", EqualsTo("sgd")),
-                true=Float(0.1, 1.0),
-                false=Float(0.001, 0.1),
+                true=Float(ge=0.1, le=1.0),
+                false=Float(ge=0.001, le=0.1),
             )
             scheduler_gamma: float = Conditional(
                 condition=FieldCondition("use_scheduler", EqualsTo(True)),
-                true=Float(0.1, 0.99),
+                true=Float(ge=0.1, le=0.99),
                 false=0.0,
             )
 
@@ -304,11 +372,10 @@ class TestDependencyInfo:
         """Test dependency info for config without conditionals."""
 
         class SimpleConfig(Config):
-            learning_rate: float = Float(0.001, 0.1)
-            batch_size: int = Int(8, 128)
+            learning_rate: float = Float(ge=0.001, le=0.1)
+            batch_size: int = Int(ge=8, le=128)
 
         info = SimpleConfig.get_dependency_info()
-
         assert "nodes" in info
         assert "edges" in info
         assert "order" in info
@@ -321,12 +388,11 @@ class TestDependencyInfo:
             optimizer: str = Categorical(["adam", "sgd"])
             learning_rate: float = Conditional(
                 condition=FieldCondition("optimizer", EqualsTo("sgd")),
-                true=Float(0.1, 1.0),
-                false=Float(0.001, 0.1),
+                true=Float(ge=0.1, le=1.0),
+                false=Float(ge=0.001, le=0.1),
             )
 
         info = SimpleConfig.get_dependency_info()
-
         assert "learning_rate" in info["nodes"]
         assert "optimizer" in info["nodes"]
 
@@ -350,13 +416,13 @@ class TestConfigErrors:
             class CircularConfig(Config):
                 a: float = Conditional(
                     condition=FieldCondition("b", EqualsTo(1.0)),
-                    true=Float(0.0, 1.0),
-                    false=Float(1.0, 2.0),
+                    true=Float(ge=0.0, le=1.0),
+                    false=Float(ge=1.0, le=2.0),
                 )
                 b: float = Conditional(
                     condition=FieldCondition("a", EqualsTo(1.0)),
-                    true=Float(0.0, 1.0),
-                    false=Float(1.0, 2.0),
+                    true=Float(ge=0.0, le=1.0),
+                    false=Float(ge=1.0, le=2.0),
                 )
 
     def test_missing_dependency_field_raises_error(self):
@@ -366,15 +432,24 @@ class TestConfigErrors:
             class BadConfig(Config):
                 learning_rate: float = Conditional(
                     condition=FieldCondition("nonexistent", EqualsTo("value")),
-                    true=Float(0.0, 1.0),
-                    false=Float(1.0, 2.0),
+                    true=Float(ge=0.0, le=1.0),
+                    false=Float(ge=1.0, le=2.0),
                 )
 
-    def test_missing_field_in_data_raises_error(self):
-        """Test that missing required fields raise error."""
+    def test_missing_field_without_default_raises_error(self):
+        """Test that missing required fields without defaults raise error."""
 
         class SimpleConfig(Config):
-            learning_rate: float = Float(0.001, 0.1)
+            learning_rate: float = Float(ge=0.001, le=0.1)
 
-        with pytest.raises(RuntimeError, match="not provided"):
+        with pytest.raises(RuntimeError, match="not provided.*no default"):
             SimpleConfig()
+
+    def test_can_omit_field_with_default(self):
+        """Test that fields with defaults can be omitted."""
+
+        class SimpleConfig(Config):
+            learning_rate: float = Float(ge=0.001, le=0.1, default=0.01)
+
+        config = SimpleConfig()
+        assert config.learning_rate == 0.01

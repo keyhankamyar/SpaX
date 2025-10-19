@@ -12,7 +12,7 @@ from pydantic_core import CoreSchema, core_schema
 
 from spax.distributions import CategoricalDistribution
 
-from .base import Space
+from .base import UNSET, Space, _Unset
 
 
 class Choice:
@@ -78,22 +78,28 @@ class CategoricalSpace(Space[Any]):
         ... ])
     """
 
-    def __init__(self, choices: list[Any | Choice]) -> None:
+    def __init__(
+        self,
+        choices: list[Any | Choice],
+        default: Any | _Unset = UNSET,
+        description: str | None = None,
+    ) -> None:
         """
         Initialize a categorical space.
 
         Args:
             choices: List of possible values or Choice objects.
+            default: Default value to use when not specified. Must be one of the choices.
+            description: Human-readable description of this parameter.
 
         Raises:
             ValueError: If choices list is empty.
             ValueError: If any choice value is not comparable or hashable.
         """
-        super().__init__()
+        from spax.config import Config
 
         if not choices:
             raise ValueError("Categorical space must have at least one choice")
-        from spax.config import Config
 
         self.raw_choices = choices
         self.choices: list[Any] = []
@@ -125,9 +131,12 @@ class CategoricalSpace(Space[Any]):
         total_weight = sum(self.weights)
         if total_weight == 0:
             raise ValueError("Total weight cannot be zero")
-
         self.probs = [w / total_weight for w in self.weights]
+
         self.distribution = CategoricalDistribution()
+
+        # Call parent __init__ with default and description
+        super().__init__(default=default, description=description)
 
     def validate(self, value: Any) -> Any:
         """
@@ -188,10 +197,25 @@ class CategoricalSpace(Space[Any]):
 
     def __repr__(self) -> str:
         """Return a string representation."""
-        return f"CategoricalSpace(choices={self.choices}, probs={self.probs})"
+        parts = [f"choices={self.choices}"]
+
+        # Only show probs if they're not all equal (i.e., weights were specified)
+        if len(set(self.probs)) > 1:
+            parts.append(f"probs={self.probs}")
+
+        if self.default is not UNSET:
+            parts.append(f"default={self.default!r}")
+        if self.description is not None:
+            parts.append(f"description={self.description!r}")
+
+        return f"CategoricalSpace({', '.join(parts)})"
 
 
-def Categorical(choices: list[Any | Choice]) -> Any:
+def Categorical(
+    choices: list[Any | Choice],
+    default: Any | _Unset = UNSET,
+    description: str | None = None,
+) -> Any:
     """
     Create a categorical search space (type-checker friendly).
 
@@ -200,8 +224,10 @@ def Categorical(choices: list[Any | Choice]) -> Any:
 
     Args:
         choices: List of possible values or Choice objects.
+        default: Default value to use when not specified. Must be one of the choices.
+        description: Human-readable description of this parameter.
 
     Returns:
         A CategoricalSpace instance.
     """
-    return CategoricalSpace(choices)
+    return CategoricalSpace(choices, default, description)

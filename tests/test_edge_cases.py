@@ -13,7 +13,7 @@ class TestConfigEdgeCases:
         """Test that string input to Config raises proper error."""
 
         class SimpleConfig(Config):
-            lr: float = Float(0.001, 0.1)
+            lr: float = Float(ge=0.001, le=0.1)
 
         # String should fail validation
         with pytest.raises((ValueError, TypeError)):
@@ -27,7 +27,7 @@ class TestDescriptorProtocol:
         """Test that accessing Space from class returns the Space itself."""
 
         class TestClass:
-            value: float = Float(0.0, 1.0)
+            value: float = Float(ge=0.0, le=1.0)
 
         # Accessing from class should return the FloatSpace
         space = TestClass.value
@@ -37,7 +37,7 @@ class TestDescriptorProtocol:
         """Test that accessing from instance returns the stored value."""
 
         class TestClass:
-            value = Float(0.0, 1.0)
+            value = Float(ge=0.0, le=1.0)
 
         obj = TestClass()
         obj.__dict__["value"] = 0.5
@@ -49,7 +49,7 @@ class TestDescriptorProtocol:
         """Test that setting value through descriptor validates."""
 
         class TestClass:
-            value = Float(0.0, 1.0)
+            value = Float(ge=0.0, le=1.0)
 
         TestClass.value.field_name = "value"  # Manually set field name
 
@@ -91,6 +91,7 @@ class TestConditionTypeErrors:
         from spax.spaces.conditions import LargerThan
 
         cond = LargerThan(10)
+
         with pytest.raises(TypeError, match="numeric"):
             cond("not a number")
 
@@ -99,6 +100,7 @@ class TestConditionTypeErrors:
         from spax.spaces.conditions import SmallerThan
 
         cond = SmallerThan(10)
+
         with pytest.raises(TypeError, match="numeric"):
             cond("not a number")
 
@@ -136,25 +138,24 @@ class TestNumericSpaceEdgeCases:
 
     def test_float_space_field_name_none_error(self):
         """Test that _check_bounds raises RuntimeError when field_name is None."""
-        space = Float(0.0, 1.0)
+        space = Float(ge=0.0, le=1.0)
         # Don't set field_name, leave it as None
-
         with pytest.raises(RuntimeError, match="field_name is None"):
             space.validate(0.5)
 
     def test_int_space_non_integer_bounds(self):
-        """Test that Int with float bounds raises AssertionError."""
-        with pytest.raises(AssertionError, match="must be int"):
-            Int(0.5, 10)  # type: ignore
+        """Test that Int with float bounds raises TypeError."""
+        with pytest.raises(TypeError, match="must be an integer"):
+            Int(ge=0.5, le=10)  # type: ignore
 
     def test_int_space_bool_bounds(self):
-        """Test that Int with bool bounds raises AssertionError."""
-        with pytest.raises(AssertionError, match="must be int"):
-            Int(True, False)
+        """Test that Int with bool bounds raises TypeError."""
+        with pytest.raises(TypeError, match="must be an integer"):
+            Int(ge=True, le=False)  # type: ignore
 
     def test_float_validate_non_numeric_string(self):
         """Test Float.validate with non-numeric string."""
-        space = Float(0.0, 1.0)
+        space = Float(ge=0.0, le=1.0)
         space.field_name = "test"
 
         with pytest.raises(ValueError, match="Expected numeric"):
@@ -162,7 +163,7 @@ class TestNumericSpaceEdgeCases:
 
     def test_int_validate_string(self):
         """Test Int.validate with string."""
-        space = Int(0, 10)
+        space = Int(ge=0, le=10)
         space.field_name = "test"
 
         with pytest.raises(ValueError, match="Expected int"):
@@ -201,8 +202,8 @@ class TestConditionalEdgeCases:
 
         space = Conditional(
             condition=FieldCondition("x", EqualsTo(1)),
-            true=Float(0.0, 1.0),
-            false=Float(1.0, 2.0),
+            true=Float(ge=0.0, le=1.0),
+            false=Float(ge=1.0, le=2.0),
         )
         space.field_name = "test"
 

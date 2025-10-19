@@ -22,9 +22,9 @@ class TestMLWorkflows:
         """Test a basic training configuration."""
 
         class TrainingConfig(Config):
-            learning_rate: float = Float(1e-5, 1e-1, "log")
-            batch_size: int = Int(8, 128, "log")
-            epochs: int = Int(1, 100)
+            learning_rate: float = Float(ge=1e-5, le=1e-1, distribution="log")
+            batch_size: int = Int(ge=8, le=128, distribution="log")
+            epochs: int = Int(ge=1, le=100)
             optimizer: str = Categorical(["adam", "sgd", "adamw"])
 
         # Create specific config
@@ -45,15 +45,15 @@ class TestMLWorkflows:
 
         class OptimizerConfig(Config):
             optimizer: str = Categorical(["adam", "sgd"])
-            learning_rate: float = Float(1e-5, 1e-1, "log")
+            learning_rate: float = Float(ge=1e-5, le=1e-1, distribution="log")
             momentum: float = Conditional(
                 condition=FieldCondition("optimizer", EqualsTo("sgd")),
-                true=Float(0.0, 0.99),
+                true=Float(ge=0.0, le=0.99),
                 false=0.0,  # Adam doesn't use momentum
             )
             beta1: float = Conditional(
                 condition=FieldCondition("optimizer", EqualsTo("adam")),
-                true=Float(0.8, 0.999),
+                true=Float(ge=0.8, le=0.999),
                 false=0.9,  # Default for non-Adam
             )
 
@@ -86,15 +86,15 @@ class TestMLWorkflows:
             model_type: str = Categorical(["transformer", "cnn", "rnn"])
             depth: int = Conditional(
                 condition=FieldCondition("model_type", EqualsTo("transformer")),
-                true=Int(6, 24),
+                true=Int(ge=6, le=24),
                 false=Conditional(
                     condition=FieldCondition("model_type", EqualsTo("cnn")),
-                    true=Int(10, 50),
-                    false=Int(1, 10),  # RNN
+                    true=Int(ge=10, le=50),
+                    false=Int(ge=1, le=10),  # RNN
                 ),
             )
-            hidden_size: int = Int(64, 1024, "log")
-            dropout: float = Float(0.0, 0.5)
+            hidden_size: int = Int(ge=64, le=1024, distribution="log")
+            dropout: float = Float(ge=0.0, le=0.5)
             use_attention: bool = Conditional(
                 condition=FieldCondition("model_type", In(["transformer", "rnn"])),
                 true=Categorical([True, False]),
@@ -125,7 +125,6 @@ class TestMLWorkflows:
         # Random sampling
         for _ in range(20):
             config = NASConfig.random()
-
             if config.model_type == "transformer":
                 assert 6 <= config.depth <= 24
             elif config.model_type == "cnn":
@@ -148,7 +147,6 @@ class TestMLWorkflows:
 
         # Sample many times
         samples = [WeightedConfig.random().activation for _ in range(1000)]
-
         relu_count = samples.count("relu")
         gelu_count = samples.count("gelu")
         silu_count = samples.count("silu")
@@ -176,7 +174,7 @@ class TestComplexDependencies:
             )
             feature_b_param: float = Conditional(
                 condition=FieldCondition("use_feature_b", EqualsTo(True)),
-                true=Float(0.0, 1.0),
+                true=Float(ge=0.0, le=1.0),
                 false=0.0,
             )
 
@@ -191,11 +189,9 @@ class TestComplexDependencies:
         # Random sampling respects chain
         for _ in range(30):
             config = ChainConfig.random()
-
             if not config.use_feature_a:
                 assert not config.use_feature_b
                 assert config.feature_b_param == 0.0
-
             if not config.use_feature_b:
                 assert config.feature_b_param == 0.0
 
@@ -212,7 +208,7 @@ class TestComplexDependencies:
                         FieldCondition("use_advanced", EqualsTo(True)),
                     ]
                 ),
-                true=Float(0.0, 1.0),
+                true=Float(ge=0.0, le=1.0),
                 false=0.0,
             )
 
@@ -236,12 +232,12 @@ class TestSpaceIntrospection:
         """Test getting comprehensive space information."""
 
         class ComplexConfig(Config):
-            lr: float = Float(1e-5, 1e-1, "log", "both")
-            batch_size: int = Int(8, 128)
+            lr: float = Float(ge=1e-5, le=1e-1, distribution="log")
+            batch_size: int = Int(ge=8, le=128)
             optimizer: str = Categorical(["adam", "sgd"])
             momentum: float = Conditional(
                 condition=FieldCondition("optimizer", EqualsTo("sgd")),
-                true=Float(0.0, 0.99),
+                true=Float(ge=0.0, le=0.99),
                 false=0.0,
             )
 
@@ -270,16 +266,16 @@ class TestSpaceIntrospection:
         """Test getting dependency graph information."""
 
         class DependentConfig(Config):
-            a: float = Float(0.0, 1.0)
+            a: float = Float(ge=0.0, le=1.0)
             b: float = Conditional(
                 condition=FieldCondition("a", LargerThan(0.5)),
-                true=Float(1.0, 2.0),
-                false=Float(0.0, 1.0),
+                true=Float(ge=1.0, le=2.0),
+                false=Float(ge=0.0, le=1.0),
             )
             c: float = Conditional(
                 condition=FieldCondition("b", LargerThan(1.0)),
-                true=Float(2.0, 3.0),
-                false=Float(0.0, 2.0),
+                true=Float(ge=2.0, le=3.0),
+                false=Float(ge=0.0, le=2.0),
             )
 
         dep_info = DependentConfig.get_dependency_info()
@@ -308,20 +304,19 @@ class TestEdgeCases:
         """Test integer ranges at boundaries."""
 
         class EdgeConfig(Config):
-            single_int: int = Int(5, 6)  # Only 5 or 6 possible
+            single_int: int = Int(ge=5, le=6)  # Only 5 or 6 possible
 
         values = set()
         for _ in range(20):
             config = EdgeConfig.random()
             values.add(config.single_int)
-
         assert values.issubset({5, 6})
 
     def test_very_small_float_range(self):
         """Test very small float ranges."""
 
         class EdgeConfig(Config):
-            tiny_float: float = Float(0.0001, 0.0002)
+            tiny_float: float = Float(ge=0.0001, le=0.0002)
 
         for _ in range(20):
             config = EdgeConfig.random()
@@ -331,7 +326,7 @@ class TestEdgeCases:
         """Test log distribution over many orders of magnitude."""
 
         class EdgeConfig(Config):
-            wide_range: float = Float(1e-10, 1e10, "log")
+            wide_range: float = Float(ge=1e-10, le=1e10, distribution="log")
 
         for _ in range(20):
             config = EdgeConfig.random()
@@ -345,8 +340,8 @@ class TestPydanticIntegration:
         """Test Pydantic's model_dump method."""
 
         class SimpleConfig(Config):
-            lr: float = Float(0.001, 0.1)
-            batch_size: int = Int(8, 128)
+            lr: float = Float(ge=0.001, le=0.1)
+            batch_size: int = Int(ge=8, le=128)
 
         config = SimpleConfig(lr=0.01, batch_size=32)
         data = config.model_dump()
@@ -357,7 +352,7 @@ class TestPydanticIntegration:
         """Test Pydantic's model_dump_json method."""
 
         class SimpleConfig(Config):
-            lr: float = Float(0.001, 0.1)
+            lr: float = Float(ge=0.001, le=0.1)
             optimizer: str = Categorical(["adam", "sgd"])
 
         config = SimpleConfig(lr=0.01, optimizer="adam")
@@ -370,8 +365,8 @@ class TestPydanticIntegration:
         """Test Pydantic's model_validate method."""
 
         class SimpleConfig(Config):
-            lr: float = Float(0.001, 0.1)
-            batch_size: int = Int(8, 128)
+            lr: float = Float(ge=0.001, le=0.1)
+            batch_size: int = Int(ge=8, le=128)
 
         data = {"lr": 0.01, "batch_size": 32}
         config = SimpleConfig.model_validate(data)

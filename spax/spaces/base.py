@@ -11,6 +11,16 @@ from typing import Any, Generic, TypeVar
 from pydantic import GetCoreSchemaHandler
 from pydantic_core import CoreSchema
 
+
+class _Unset:
+    """Sentinel value to distinguish 'no default provided' from 'default is None'."""
+
+    def __repr__(self) -> str:
+        return "UNSET"
+
+
+UNSET = _Unset()
+
 T = TypeVar("T")
 
 
@@ -31,9 +41,33 @@ class Space(ABC, Generic[T]):
         T: The type of values this space produces (e.g., float, int, Any).
     """
 
-    def __init__(self) -> None:
-        """Initialize a space with no assigned field name."""
+    def __init__(
+        self, default: T | _Unset = UNSET, description: str | None = None
+    ) -> None:
+        """
+        Initialize a space with optional default value and description.
+
+        Args:
+            default: Default value to use when not specified. Must be valid for this space.
+                    If UNSET, no default is provided.
+            description: Human-readable description of this parameter.
+        """
         self.field_name: str | None = None
+        self.default = default
+        self.description = description
+
+        # Validate default if provided
+        if default is not UNSET:
+            # Temporarily set field_name for validation error messages
+            original_field_name = self.field_name
+            self.field_name = "default"
+            try:
+                self.validate(default)
+            except (ValueError, TypeError) as e:
+                raise ValueError(f"Invalid default value {default!r}: {e}") from e
+            finally:
+                # Restore original field_name
+                self.field_name = original_field_name
 
     def __set_name__(self, owner: type, name: str) -> None:
         """
@@ -133,4 +167,9 @@ class Space(ABC, Generic[T]):
 
     def __repr__(self) -> str:
         """Return a string representation of this space."""
-        return f"{self.__class__.__name__}(field_name={self.field_name!r})"
+        parts = [f"field_name={self.field_name!r}"]
+        if self.default is not UNSET:
+            parts.append(f"default={self.default!r}")
+        if self.description is not None:
+            parts.append(f"description={self.description!r}")
+        return f"{self.__class__.__name__}({', '.join(parts)})"

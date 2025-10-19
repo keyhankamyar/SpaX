@@ -21,8 +21,8 @@ class TestConditionalSpace:
         """Test creating a conditional space."""
         space = Conditional(
             condition=FieldCondition("optimizer", EqualsTo("sgd")),
-            true=Float(0.1, 1.0),
-            false=Float(0.001, 0.1),
+            true=Float(ge=0.1, le=1.0),
+            false=Float(ge=0.001, le=0.1),
         )
         assert isinstance(space, ConditionalSpace)
 
@@ -30,10 +30,9 @@ class TestConditionalSpace:
         """Test that sampling without config raises NotImplementedError."""
         space = Conditional(
             condition=FieldCondition("optimizer", EqualsTo("sgd")),
-            true=Float(0.1, 1.0),
-            false=Float(0.001, 0.1),
+            true=Float(ge=0.1, le=1.0),
+            false=Float(ge=0.001, le=0.1),
         )
-
         with pytest.raises(
             NotImplementedError, match="cannot be sampled independently"
         ):
@@ -47,11 +46,11 @@ class TestConditionalSpace:
 
         space = Conditional(
             condition=FieldCondition("optimizer", EqualsTo("sgd")),
-            true=Float(0.1, 1.0),
-            false=Float(0.001, 0.1),
+            true=Float(ge=0.1, le=1.0),
+            false=Float(ge=0.001, le=0.1),
         )
-
         config = MockConfig()
+
         for _ in range(20):
             value = space.sample_with_config(config)
             assert 0.1 <= value <= 1.0
@@ -64,11 +63,11 @@ class TestConditionalSpace:
 
         space = Conditional(
             condition=FieldCondition("optimizer", EqualsTo("sgd")),
-            true=Float(0.1, 1.0),
-            false=Float(0.001, 0.1),
+            true=Float(ge=0.1, le=1.0),
+            false=Float(ge=0.001, le=0.1),
         )
-
         config = MockConfig()
+
         for _ in range(20):
             value = space.sample_with_config(config)
             assert 0.001 <= value <= 0.1
@@ -81,12 +80,12 @@ class TestConditionalSpace:
 
         space = Conditional(
             condition=FieldCondition("optimizer", EqualsTo("sgd")),
-            true=Float(0.1, 1.0),
-            false=Float(0.001, 0.1),
+            true=Float(ge=0.1, le=1.0),
+            false=Float(ge=0.001, le=0.1),
         )
         space.field_name = "lr"
-
         config = MockConfig()
+
         assert space.validate_with_config(0.5, config) == 0.5
 
     def test_validate_with_config_false_branch(self):
@@ -97,12 +96,12 @@ class TestConditionalSpace:
 
         space = Conditional(
             condition=FieldCondition("optimizer", EqualsTo("sgd")),
-            true=Float(0.1, 1.0),
-            false=Float(0.001, 0.1),
+            true=Float(ge=0.1, le=1.0),
+            false=Float(ge=0.001, le=0.1),
         )
         space.field_name = "lr"
-
         config = MockConfig()
+
         assert space.validate_with_config(0.01, config) == 0.01
 
     def test_validate_with_config_rejects_invalid_value(self):
@@ -113,12 +112,12 @@ class TestConditionalSpace:
 
         space = Conditional(
             condition=FieldCondition("optimizer", EqualsTo("sgd")),
-            true=Float(0.1, 1.0),
-            false=Float(0.001, 0.1),
+            true=Float(ge=0.1, le=1.0),
+            false=Float(ge=0.001, le=0.1),
         )
         space.field_name = "lr"
-
         config = MockConfig()
+
         # Condition is True, so should use range [0.1, 1.0]
         with pytest.raises(ValueError):
             space.validate_with_config(0.01, config)  # Too small for true branch
@@ -135,8 +134,8 @@ class TestConditionalSpace:
             false=0,  # Fixed value
         )
         space.field_name = "param"
-
         config = MockConfig()
+
         assert space.sample_with_config(config) == 10
         assert space.validate_with_config(10, config) == 10
 
@@ -154,14 +153,14 @@ class TestConditionalSpace:
             condition=FieldCondition("model_type", EqualsTo("transformer")),
             true=Conditional(
                 condition=FieldCondition("size", EqualsTo("large")),
-                true=Int(12, 24),
-                false=Int(6, 12),
+                true=Int(ge=12, le=24),
+                false=Int(ge=6, le=12),
             ),
-            false=Int(1, 6),
+            false=Int(ge=1, le=6),
         )
         space.field_name = "depth"
-
         config = MockConfig()
+
         for _ in range(20):
             value = space.sample_with_config(config)
             assert 12 <= value <= 24
@@ -177,8 +176,8 @@ class TestConditionalInConfig:
             optimizer: str = Categorical(["adam", "sgd"])
             learning_rate: float = Conditional(
                 condition=FieldCondition("optimizer", EqualsTo("sgd")),
-                true=Float(0.1, 1.0),
-                false=Float(0.001, 0.1),
+                true=Float(ge=0.1, le=1.0),
+                false=Float(ge=0.001, le=0.1),
             )
 
         # Create with SGD
@@ -196,8 +195,8 @@ class TestConditionalInConfig:
             optimizer: str = Categorical(["adam", "sgd"])
             learning_rate: float = Conditional(
                 condition=FieldCondition("optimizer", EqualsTo("sgd")),
-                true=Float(0.1, 1.0),
-                false=Float(0.001, 0.1),
+                true=Float(ge=0.1, le=1.0),
+                false=Float(ge=0.001, le=0.1),
             )
 
         # Valid for SGD
@@ -221,13 +220,12 @@ class TestConditionalInConfig:
             optimizer: str = Categorical(["adam", "sgd"])
             learning_rate: float = Conditional(
                 condition=FieldCondition("optimizer", EqualsTo("sgd")),
-                true=Float(0.1, 1.0),
-                false=Float(0.001, 0.1),
+                true=Float(ge=0.1, le=1.0),
+                false=Float(ge=0.001, le=0.1),
             )
 
         for _ in range(20):
             config = MyConfig.random()
-
             if config.optimizer == "sgd":
                 assert 0.1 <= config.learning_rate <= 1.0
             else:  # adam
@@ -243,10 +241,10 @@ class TestConditionalInConfig:
                 condition=FieldCondition("model_type", EqualsTo("transformer")),
                 true=Conditional(
                     condition=FieldCondition("size", EqualsTo("large")),
-                    true=Int(12, 24),
-                    false=Int(6, 12),
+                    true=Int(ge=12, le=24),
+                    false=Int(ge=6, le=12),
                 ),
-                false=Int(1, 6),
+                false=Int(ge=1, le=6),
             )
 
         # Transformer + large
@@ -269,12 +267,12 @@ class TestConditionalInConfig:
             use_scheduler: bool = Categorical([True, False])
             learning_rate: float = Conditional(
                 condition=FieldCondition("optimizer", EqualsTo("sgd")),
-                true=Float(0.1, 1.0),
-                false=Float(0.001, 0.1),
+                true=Float(ge=0.1, le=1.0),
+                false=Float(ge=0.001, le=0.1),
             )
             scheduler_gamma: float = Conditional(
                 condition=FieldCondition("use_scheduler", EqualsTo(True)),
-                true=Float(0.1, 0.99),
+                true=Float(ge=0.1, le=0.99),
                 false=0.0,  # Fixed value when no scheduler
             )
 

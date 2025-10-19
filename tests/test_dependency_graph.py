@@ -12,9 +12,9 @@ class TestDependencyGraphBasic:
     def test_no_dependencies(self):
         """Test graph with no dependencies."""
         spaces = {
-            "a": Float(0.0, 1.0),
-            "b": Float(0.0, 1.0),
-            "c": Float(0.0, 1.0),
+            "a": Float(ge=0.0, le=1.0),
+            "b": Float(ge=0.0, le=1.0),
+            "c": Float(ge=0.0, le=1.0),
         }
 
         graph = DependencyGraph(spaces)
@@ -30,11 +30,11 @@ class TestDependencyGraphBasic:
     def test_simple_dependency(self):
         """Test simple A -> B dependency."""
         spaces = {
-            "a": Float(0.0, 1.0),
+            "a": Float(ge=0.0, le=1.0),
             "b": Conditional(
                 condition=FieldCondition("a", EqualsTo(0.5)),
-                true=Float(1.0, 2.0),
-                false=Float(0.0, 1.0),
+                true=Float(ge=1.0, le=2.0),
+                false=Float(ge=0.0, le=1.0),
             ),
         }
 
@@ -50,16 +50,16 @@ class TestDependencyGraphBasic:
     def test_chain_dependency(self):
         """Test chain A -> B -> C."""
         spaces = {
-            "a": Float(0.0, 1.0),
+            "a": Float(ge=0.0, le=1.0),
             "b": Conditional(
                 condition=FieldCondition("a", EqualsTo(0.5)),
-                true=Float(1.0, 2.0),
-                false=Float(0.0, 1.0),
+                true=Float(ge=1.0, le=2.0),
+                false=Float(ge=0.0, le=1.0),
             ),
             "c": Conditional(
                 condition=FieldCondition("b", EqualsTo(1.5)),
-                true=Float(2.0, 3.0),
-                false=Float(0.0, 2.0),
+                true=Float(ge=2.0, le=3.0),
+                false=Float(ge=0.0, le=2.0),
             ),
         }
 
@@ -77,16 +77,16 @@ class TestDependencyGraphBasic:
     def test_multiple_dependencies_on_one(self):
         """Test multiple fields depending on one: A -> B, A -> C."""
         spaces = {
-            "a": Float(0.0, 1.0),
+            "a": Float(ge=0.0, le=1.0),
             "b": Conditional(
                 condition=FieldCondition("a", EqualsTo(0.5)),
-                true=Float(1.0, 2.0),
-                false=Float(0.0, 1.0),
+                true=Float(ge=1.0, le=2.0),
+                false=Float(ge=0.0, le=1.0),
             ),
             "c": Conditional(
                 condition=FieldCondition("a", EqualsTo(0.5)),
-                true=Float(2.0, 3.0),
-                false=Float(0.0, 2.0),
+                true=Float(ge=2.0, le=3.0),
+                false=Float(ge=0.0, le=2.0),
             ),
         }
 
@@ -109,11 +109,11 @@ class TestDependencyGraphMethods:
     def test_get_ordered_fields(self):
         """Test getting ordered fields."""
         spaces = {
-            "a": Float(0.0, 1.0),
+            "a": Float(ge=0.0, le=1.0),
             "b": Conditional(
                 condition=FieldCondition("a", EqualsTo(0.5)),
-                true=Float(1.0, 2.0),
-                false=Float(0.0, 1.0),
+                true=Float(ge=1.0, le=2.0),
+                false=Float(ge=0.0, le=1.0),
             ),
         }
 
@@ -126,12 +126,12 @@ class TestDependencyGraphMethods:
     def test_get_dependencies(self):
         """Test getting direct dependencies of a field."""
         spaces = {
-            "a": Float(0.0, 1.0),
-            "b": Float(0.0, 1.0),
+            "a": Float(ge=0.0, le=1.0),
+            "b": Float(ge=0.0, le=1.0),
             "c": Conditional(
                 condition=FieldCondition("a", EqualsTo(0.5)),
-                true=Float(1.0, 2.0),
-                false=Float(0.0, 1.0),
+                true=Float(ge=1.0, le=2.0),
+                false=Float(ge=0.0, le=1.0),
             ),
         }
 
@@ -148,16 +148,16 @@ class TestDependencyGraphMethods:
     def test_get_dependents(self):
         """Test getting fields that depend on a given field."""
         spaces = {
-            "a": Float(0.0, 1.0),
+            "a": Float(ge=0.0, le=1.0),
             "b": Conditional(
                 condition=FieldCondition("a", EqualsTo(0.5)),
-                true=Float(1.0, 2.0),
-                false=Float(0.0, 1.0),
+                true=Float(ge=1.0, le=2.0),
+                false=Float(ge=0.0, le=1.0),
             ),
             "c": Conditional(
                 condition=FieldCondition("a", EqualsTo(0.5)),
-                true=Float(2.0, 3.0),
-                false=Float(0.0, 2.0),
+                true=Float(ge=2.0, le=3.0),
+                false=Float(ge=0.0, le=2.0),
             ),
         }
 
@@ -174,11 +174,11 @@ class TestDependencyGraphMethods:
     def test_get_graph_data(self):
         """Test getting graph data for visualization."""
         spaces = {
-            "a": Float(0.0, 1.0),
+            "a": Float(ge=0.0, le=1.0),
             "b": Conditional(
                 condition=FieldCondition("a", EqualsTo(0.5)),
-                true=Float(1.0, 2.0),
-                false=Float(0.0, 1.0),
+                true=Float(ge=1.0, le=2.0),
+                false=Float(ge=0.0, le=1.0),
             ),
         }
 
@@ -205,13 +205,13 @@ class TestDependencyGraphErrors:
         spaces = {
             "a": Conditional(
                 condition=FieldCondition("b", EqualsTo(0.5)),
-                true=Float(1.0, 2.0),
-                false=Float(0.0, 1.0),
+                true=Float(ge=1.0, le=2.0),
+                false=Float(ge=0.0, le=1.0),
             ),
             "b": Conditional(
                 condition=FieldCondition("a", EqualsTo(0.5)),
-                true=Float(1.0, 2.0),
-                false=Float(0.0, 1.0),
+                true=Float(ge=1.0, le=2.0),
+                false=Float(ge=0.0, le=1.0),
             ),
         }
 
@@ -223,8 +223,8 @@ class TestDependencyGraphErrors:
         spaces = {
             "a": Conditional(
                 condition=FieldCondition("a", EqualsTo(0.5)),
-                true=Float(1.0, 2.0),
-                false=Float(0.0, 1.0),
+                true=Float(ge=1.0, le=2.0),
+                false=Float(ge=0.0, le=1.0),
             )
         }
 
@@ -234,11 +234,11 @@ class TestDependencyGraphErrors:
     def test_missing_dependency_field_raises_error(self):
         """Test that referencing non-existent fields raises error."""
         spaces = {
-            "a": Float(0.0, 1.0),
+            "a": Float(ge=0.0, le=1.0),
             "b": Conditional(
                 condition=FieldCondition("nonexistent", EqualsTo(0.5)),
-                true=Float(1.0, 2.0),
-                false=Float(0.0, 1.0),
+                true=Float(ge=1.0, le=2.0),
+                false=Float(ge=0.0, le=1.0),
             ),
         }
 
@@ -252,16 +252,16 @@ class TestComplexDependencies:
     def test_nested_conditional_dependencies(self):
         """Test nested conditionals with proper dependency extraction."""
         spaces = {
-            "a": Float(0.0, 1.0),
-            "b": Float(0.0, 1.0),
+            "a": Float(ge=0.0, le=1.0),
+            "b": Float(ge=0.0, le=1.0),
             "c": Conditional(
                 condition=FieldCondition("a", EqualsTo(0.5)),
                 true=Conditional(
                     condition=FieldCondition("b", EqualsTo(0.5)),
-                    true=Float(2.0, 3.0),
-                    false=Float(1.0, 2.0),
+                    true=Float(ge=2.0, le=3.0),
+                    false=Float(ge=1.0, le=2.0),
                 ),
-                false=Float(0.0, 1.0),
+                false=Float(ge=0.0, le=1.0),
             ),
         }
 
@@ -275,8 +275,8 @@ class TestComplexDependencies:
     def test_and_condition_dependencies(self):
         """Test dependencies with And conditions."""
         spaces = {
-            "a": Float(0.0, 1.0),
-            "b": Float(0.0, 1.0),
+            "a": Float(ge=0.0, le=1.0),
+            "b": Float(ge=0.0, le=1.0),
             "c": Conditional(
                 condition=And(
                     [
@@ -284,8 +284,8 @@ class TestComplexDependencies:
                         FieldCondition("b", EqualsTo(0.5)),
                     ]
                 ),
-                true=Float(1.0, 2.0),
-                false=Float(0.0, 1.0),
+                true=Float(ge=1.0, le=2.0),
+                false=Float(ge=0.0, le=1.0),
             ),
         }
 
@@ -303,16 +303,16 @@ class TestComplexDependencies:
     def test_diamond_dependency(self):
         """Test diamond pattern: A -> B, A -> C, B -> D, C -> D."""
         spaces = {
-            "a": Float(0.0, 1.0),
+            "a": Float(ge=0.0, le=1.0),
             "b": Conditional(
                 condition=FieldCondition("a", EqualsTo(0.5)),
-                true=Float(1.0, 2.0),
-                false=Float(0.0, 1.0),
+                true=Float(ge=1.0, le=2.0),
+                false=Float(ge=0.0, le=1.0),
             ),
             "c": Conditional(
                 condition=FieldCondition("a", EqualsTo(0.5)),
-                true=Float(1.0, 2.0),
-                false=Float(0.0, 1.0),
+                true=Float(ge=1.0, le=2.0),
+                false=Float(ge=0.0, le=1.0),
             ),
             "d": Conditional(
                 condition=And(
@@ -321,8 +321,8 @@ class TestComplexDependencies:
                         FieldCondition("c", EqualsTo(1.5)),
                     ]
                 ),
-                true=Float(2.0, 3.0),
-                false=Float(0.0, 2.0),
+                true=Float(ge=2.0, le=3.0),
+                false=Float(ge=0.0, le=2.0),
             ),
         }
 

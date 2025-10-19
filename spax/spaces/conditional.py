@@ -10,7 +10,7 @@ from typing import Any
 from pydantic import GetCoreSchemaHandler
 from pydantic_core import CoreSchema, core_schema
 
-from .base import Space
+from .base import UNSET, Space, _Unset
 from .conditions import Condition
 
 
@@ -47,6 +47,8 @@ class ConditionalSpace(Space[Any]):
         condition: Condition,
         true: Space[Any] | Any,
         false: Space[Any] | Any,
+        default: Any | _Unset = UNSET,
+        description: str | None = None,
     ) -> None:
         """
         Initialize a conditional space.
@@ -55,8 +57,9 @@ class ConditionalSpace(Space[Any]):
             condition: Condition to evaluate.
             true: Space or fixed value to use when condition is True.
             false: Space or fixed value to use when condition is False.
+            default: Default value to use when not specified.
+            description: Human-readable description of this parameter.
         """
-        super().__init__()
         self.condition = condition
         self.true_branch = true
         self.false_branch = false
@@ -64,6 +67,9 @@ class ConditionalSpace(Space[Any]):
         # Store whether branches are spaces or fixed values
         self.true_is_space = isinstance(true, Space)
         self.false_is_space = isinstance(false, Space)
+
+        # Call parent __init__ with default and description
+        super().__init__(default=default, description=description)
 
     def __set_name__(self, owner: type, name: str) -> None:
         """
@@ -216,19 +222,26 @@ class ConditionalSpace(Space[Any]):
 
     def __repr__(self) -> str:
         """Return a string representation."""
-        return (
-            f"ConditionalSpace(\n"
-            f"  condition={self.condition!r},\n"
-            f"  true={self.true_branch!r},\n"
-            f"  false={self.false_branch!r}\n"
-            f")"
-        )
+        parts = [
+            f"condition={self.condition!r}",
+            f"true={self.true_branch!r}",
+            f"false={self.false_branch!r}",
+        ]
+
+        if self.default is not UNSET:
+            parts.append(f"default={self.default!r}")
+        if self.description is not None:
+            parts.append(f"description={self.description!r}")
+
+        return f"ConditionalSpace({', '.join(parts)})"
 
 
 def Conditional(
     condition: Condition,
     true: Space[Any] | Any,
     false: Space[Any] | Any,
+    default: Any | _Unset = UNSET,
+    description: str | None = None,
 ) -> Any:
     """
     Create a conditional search space (type-checker friendly).
@@ -240,6 +253,8 @@ def Conditional(
         condition: Condition to evaluate.
         true: Space or value to use when condition is True.
         false: Space or value to use when condition is False.
+        default: Default value to use when not specified.
+        description: Human-readable description of this parameter.
 
     Returns:
         A ConditionalSpace instance.
@@ -249,8 +264,10 @@ def Conditional(
         ...     optimizer: str = Categorical(["adam", "sgd"])
         ...     learning_rate: float = Conditional(
         ...         condition=FieldCondition("optimizer", EqualsTo("sgd")),
-        ...         true=Float(0.01, 1.0),
-        ...         false=Float(0.0001, 0.01)
+        ...         true=Float(ge=0.01, le=1.0),
+        ...         false=Float(ge=0.0001, le=0.01),
+        ...         default=0.001,
+        ...         description="Learning rate for training"
         ...     )
     """
-    return ConditionalSpace(condition, true, false)
+    return ConditionalSpace(condition, true, false, default, description)

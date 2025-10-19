@@ -284,7 +284,10 @@ class TestLambda:
     def test_without_description(self):
         """Test repr without description."""
         cond = Lambda(lambda x: x > 0)
-        assert "function" in repr(cond).lower()
+        repr_str = repr(cond)
+        # Should show Lambda with function name and signature
+        assert "Lambda" in repr_str
+        assert "lambda" in repr_str.lower()
 
     def test_non_callable_raises_error(self):
         """Test that non-callable raises TypeError."""

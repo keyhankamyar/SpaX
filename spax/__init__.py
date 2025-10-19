@@ -34,15 +34,16 @@ Example:
 
 from .config import Config
 from .distributions import (
+    LOG,
+    UNIFORM,
     CategoricalDistribution,
     Distribution,
     LogDistribution,
     NumberDistribution,
     UniformDistribution,
-    LOG,
-    UNIFORM,
 )
 from .spaces import (
+    UNSET,
     And,
     Categorical,
     CategoricalSpace,
@@ -85,6 +86,7 @@ __all__ = [
     "CategoricalSpace",
     "ConditionalSpace",
     "Space",
+    "UNSET",
     # Conditions
     "Condition",
     "FieldCondition",
