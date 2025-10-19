@@ -7,7 +7,7 @@ name = "spax"
 version = "0.1.0-alpha"
 description = "Declarative search space definition library for ML hyperparameter optimization"
 readme = "README.md"
-requires-python = ">=3.10"
+requires-python = ">=3.11"
 license = {text = "MIT"}
 authors = [
     {name = "Your Name", email = "your.email@example.com"}
@@ -68,11 +68,11 @@ all = [
 ]
 
 [project.urls]
-Homepage = "https://github.com/yourusername/spax"
-Documentation = "https://github.com/yourusername/spax#readme"
-Repository = "https://github.com/yourusername/spax"
-"Bug Tracker" = "https://github.com/yourusername/spax/issues"
-Changelog = "https://github.com/yourusername/spax/releases"
+Homepage = "https://github.com/keyhankamyar/SpaX"
+Documentation = "https://github.com/keyhankamyar/SpaX#readme"
+Repository = "https://github.com/keyhankamyar/SpaX"
+"Bug Tracker" = "https://github.com/keyhankamyar/SpaX/issues"
+Changelog = "https://github.com/keyhankamyar/SpaX/releases"
 
 [tool.setuptools]
 packages = ["spax", "spax.spaces"]
@@ -122,7 +122,7 @@ show_missing = true
 
 [tool.black]
 line-length = 88
-target-version = ["py310", "py311", "py312"]
+target-version = ["py311", "py312", "py313", "py314"]
 include = '\.pyi?$'
 extend-exclude = '''
 /(
@@ -141,7 +141,7 @@ extend-exclude = '''
 
 [tool.ruff]
 line-length = 88
-target-version = "py310"
+target-version = "py311"
 select = [
     "E",   # pycodestyle errors
     "W",   # pycodestyle warnings
@@ -164,7 +164,7 @@ ignore = [
 "tests/*" = ["ARG"]       # Allow unused arguments in tests
 
 [tool.mypy]
-python_version = "3.10"
+python_version = "3.11"
 warn_return_any = true
 warn_unused_configs = true
 disallow_untyped_defs = true
