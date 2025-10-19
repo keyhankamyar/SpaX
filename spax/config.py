@@ -122,6 +122,26 @@ class Config(BaseModel):
                         f"(bool, Literal, int/float with Field constraints)."
                     )
 
+        # Simplify single-choice categorical spaces
+        spaces_to_remove = []
+        for field_name, space in cls._spaces.items():
+            if isinstance(space, CategoricalSpace) and len(space.choices) == 1:
+                single_choice = space.choices[0]
+                # If it's a Config type, remove the space entirely
+                if isinstance(single_choice, type) and issubclass(
+                    single_choice, Config
+                ):
+                    spaces_to_remove.append(field_name)
+                else:
+                    # Set as default value for the field
+                    field_info = cls.model_fields[field_name]
+                    field_info.default = single_choice
+                    spaces_to_remove.append(field_name)
+
+        # Remove simplified spaces
+        for field_name in spaces_to_remove:
+            del cls._spaces[field_name]
+
         # Build dependency graph for conditional spaces
         if cls._spaces:
             try:
@@ -279,8 +299,12 @@ class Config(BaseModel):
         # Add default values for non-space fields
         for field_name, field_info in cls.model_fields.items():
             if field_name not in kwargs:
+                annotation = field_info.annotation
                 # Use default if available
-                if field_info.default is not None:
+                if isinstance(annotation, type) and issubclass(annotation, Config):
+                    # Recursively generate random nested config
+                    kwargs[field_name] = annotation.random(use_defaults=use_defaults)
+                elif field_info.default is not PydanticUndefined:
                     kwargs[field_name] = field_info.default
                 elif field_info.default_factory is not None:
                     # Call the factory function
