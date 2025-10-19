@@ -170,7 +170,7 @@ class NumberSpace(Space[float]):
         high = self.high
         if not self.high_inclusive:
             high -= 1e-8
-        return self.distribution.sample(self.low, self.high)
+        return self.distribution.sample(low, high)
 
     def __repr__(self) -> str:
         """Return a detailed string representation."""
@@ -346,11 +346,11 @@ class IntSpace(NumberSpace):
         """
         low = self.low
         if not self.low_inclusive:
-            low += 1e-8
+            low += 1
         high = self.high
         if not self.high_inclusive:
-            high -= 1e-8
-        value = self.distribution.sample(self.low, self.high)
+            high -= 1
+        value = self.distribution.sample(low, high)
         return int(round(value))
 
     @classmethod
