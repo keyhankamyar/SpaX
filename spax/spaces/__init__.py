@@ -27,6 +27,7 @@ from .conditions import (
     Or,
     SmallerThan,
 )
+from .factory import infer_space_from_field_info
 from .numeric import Float, FloatSpace, Int, IntSpace
 
 __all__ = [
@@ -59,4 +60,6 @@ __all__ = [
     "Or",
     "Not",
     "Lambda",
+    # Auto inference:
+    "infer_space_from_field_info",
 ]

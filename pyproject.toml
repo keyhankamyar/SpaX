@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "spax"
-version = "0.1.1-alpha"
+version = "0.1.3-alpha"
 description = "Declarative search space definition library for ML hyperparameter optimization"
 readme = "README.md"
 requires-python = ">=3.11"

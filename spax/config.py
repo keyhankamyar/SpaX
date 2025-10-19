@@ -8,6 +8,7 @@ validation with searchable parameter spaces for HPO.
 from typing import Any, ClassVar, Self
 
 from pydantic import BaseModel, model_validator
+from pydantic_core import PydanticUndefined
 
 from .dependency_graph import DependencyGraph
 from .spaces import (
@@ -17,6 +18,7 @@ from .spaces import (
     FloatSpace,
     IntSpace,
     Space,
+    infer_space_from_field_info,
 )
 
 
@@ -79,15 +81,52 @@ class Config(BaseModel):
                 spaces[key] = value
 
         cls._spaces = spaces
+        cls._dependency_graph = None  # Will be built after model fields are ready
+
+    @classmethod
+    def __pydantic_init_subclass__(cls, **kwargs: Any) -> None:
+        """
+        Called by Pydantic after model fields are set up.
+        This is where we do space inference since model_fields is now populated.
+        """
+        super().__pydantic_init_subclass__(**kwargs)
+
+        # Infer spaces from type annotations for fields without explicit spaces
+        for field_name, field_info in cls.model_fields.items():
+            if field_name not in cls._spaces:
+                # Try to infer a space from the annotation
+                inferred_space = infer_space_from_field_info(field_info)
+
+                if inferred_space is not None:
+                    # Successfully inferred a space
+                    cls._spaces[field_name] = inferred_space
+                    # Set the field name for the space
+                    inferred_space.field_name = field_name
+                elif (
+                    field_info.default is not PydanticUndefined
+                    and field_info.default_factory is None
+                ):
+                    # Has a default value, so it's okay to not have a space
+                    pass
+                elif field_info.default_factory is not None:
+                    # Has a default factory, so it's okay to not have a space
+                    pass
+                else:
+                    # No space, no inferrable type, and no default - this is an error
+                    raise TypeError(
+                        f"Field '{field_name}' in Config class '{cls.__name__}' has type "
+                        f"'{field_info.annotation}' which cannot be automatically converted to a Space. "
+                        f"Please either: (1) define an explicit Space for this field, "
+                        f"(2) provide a default value, or (3) use a supported type "
+                        f"(bool, Literal, int/float with Field constraints)."
+                    )
 
         # Build dependency graph for conditional spaces
-        if spaces:
+        if cls._spaces:
             try:
-                cls._dependency_graph = DependencyGraph(spaces)
+                cls._dependency_graph = DependencyGraph(cls._spaces)
             except ValueError as e:
                 raise TypeError(f"Error in Config class '{cls.__name__}': {e}") from e
-        else:
-            cls._dependency_graph = None
 
     @model_validator(mode="before")
     @classmethod
