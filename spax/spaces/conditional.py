@@ -45,6 +45,7 @@ class ConditionalSpace(Space[Any]):
     def __init__(
         self,
         condition: Condition,
+        *,
         true: Space[Any] | Any,
         false: Space[Any] | Any,
         default: Any | _Unset = UNSET,
@@ -238,6 +239,7 @@ class ConditionalSpace(Space[Any]):
 
 def Conditional(
     condition: Condition,
+    *,
     true: Space[Any] | Any,
     false: Space[Any] | Any,
     default: Any | _Unset = UNSET,

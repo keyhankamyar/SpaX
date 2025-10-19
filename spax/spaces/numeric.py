@@ -28,6 +28,7 @@ class NumberSpace(Space[float]):
 
     def __init__(
         self,
+        *,
         gt: float | None = None,
         ge: float | None = None,
         lt: float | None = None,
@@ -163,6 +164,12 @@ class NumberSpace(Space[float]):
         Returns:
             A float sampled according to the distribution.
         """
+        low = self.low
+        if not self.low_inclusive:
+            low += 1e-8
+        high = self.high
+        if not self.high_inclusive:
+            high -= 1e-8
         return self.distribution.sample(self.low, self.high)
 
     def __repr__(self) -> str:
@@ -249,6 +256,7 @@ class IntSpace(NumberSpace):
 
     def __init__(
         self,
+        *,
         gt: int | None = None,
         ge: int | None = None,
         lt: int | None = None,
@@ -274,20 +282,28 @@ class IntSpace(NumberSpace):
         """
         # Validate that bounds are integers
         for name, value in [("gt", gt), ("ge", ge), ("lt", lt), ("le", le)]:
-            if value is not None and (
-                not isinstance(value, int) or isinstance(value, bool)
+            if (
+                value is not None
+                and (not isinstance(value, int))
+                or isinstance(value, bool)
             ):
                 raise TypeError(
                     f"{name} must be an integer, got {type(value).__name__}"
                 )
 
         # Validate default is integer if provided
-        if default is not UNSET and (
-            not isinstance(default, int) or isinstance(default, bool)
-        ):
+        if default is not UNSET and (not isinstance(default, int)):
             raise TypeError(f"default must be an integer, got {type(default).__name__}")
 
-        super().__init__(default, gt, ge, lt, le, distribution, description)
+        super().__init__(
+            gt=gt,
+            ge=ge,
+            lt=lt,
+            le=le,
+            distribution=distribution,
+            default=default,
+            description=description,
+        )
 
         # Store as integers for cleaner representation
         self.low = int(self.low)
@@ -328,6 +344,12 @@ class IntSpace(NumberSpace):
         Returns:
             An integer sampled according to the distribution and then rounded.
         """
+        low = self.low
+        if not self.low_inclusive:
+            low += 1e-8
+        high = self.high
+        if not self.high_inclusive:
+            high -= 1e-8
         value = self.distribution.sample(self.low, self.high)
         return int(round(value))
 
@@ -342,12 +364,13 @@ class IntSpace(NumberSpace):
 
 
 def Float(
-    default: float | _Unset = UNSET,
+    *,
     gt: float | None = None,
     ge: float | None = None,
     lt: float | None = None,
     le: float | None = None,
     distribution: DistributionType = "uniform",
+    default: float | _Unset = UNSET,
     description: str | None = None,
 ) -> Any:
     """
@@ -368,10 +391,19 @@ def Float(
     Returns:
         A FloatSpace instance.
     """
-    return FloatSpace(default, gt, ge, lt, le, distribution, description)
+    return FloatSpace(
+        gt=gt,
+        ge=ge,
+        lt=lt,
+        le=le,
+        distribution=distribution,
+        default=default,
+        description=description,
+    )
 
 
 def Int(
+    *,
     gt: int | None = None,
     ge: int | None = None,
     lt: int | None = None,

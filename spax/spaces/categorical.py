@@ -81,6 +81,7 @@ class CategoricalSpace(Space[Any]):
     def __init__(
         self,
         choices: list[Any | Choice],
+        *,
         default: Any | _Unset = UNSET,
         description: str | None = None,
     ) -> None:
@@ -213,6 +214,7 @@ class CategoricalSpace(Space[Any]):
 
 def Categorical(
     choices: list[Any | Choice],
+    *,
     default: Any | _Unset = UNSET,
     description: str | None = None,
 ) -> Any:

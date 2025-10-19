@@ -42,7 +42,7 @@ class Space(ABC, Generic[T]):
     """
 
     def __init__(
-        self, default: T | _Unset = UNSET, description: str | None = None
+        self, *, default: T | _Unset = UNSET, description: str | None = None
     ) -> None:
         """
         Initialize a space with optional default value and description.
