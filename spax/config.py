@@ -13,65 +13,7 @@ from .dependency_graph import DependencyGraph
 from .spaces import CategoricalSpace, ConditionalSpace, FloatSpace, IntSpace, Space
 
 
-class ConfigMeta(type(BaseModel)):
-    """
-    Metaclass that collects Space descriptors from Config classes.
-
-    This metaclass scans class attributes during class creation and
-    identifies all Space instances, storing them in a _spaces class
-    variable for later introspection and sampling.
-    """
-
-    def __new__(
-        mcs,
-        name: str,
-        bases: tuple[type, ...],
-        namespace: dict[str, Any],
-        **kwargs: Any,
-    ) -> type:
-        """
-        Create a new Config class with space collection.
-
-        Args:
-            name: Name of the class being created.
-            bases: Base classes.
-            namespace: Class namespace dictionary.
-            **kwargs: Additional arguments passed to type.__new__.
-
-        Returns:
-            The newly created class with _spaces populated.
-        """
-        cls = super().__new__(mcs, name, bases, namespace, **kwargs)
-
-        # Collect all Space fields defined directly in this class
-        spaces: dict[str, Space] = {}
-        for key, value in namespace.items():
-            if isinstance(value, Space):
-                spaces[key] = value
-
-        # Inherit spaces from parent classes
-        for base in bases:
-            if hasattr(base, "_spaces"):
-                # Parent spaces are added first, so child can override
-                for key, value in base._spaces.items():
-                    if key not in spaces:  # Don't override child definitions
-                        spaces[key] = value
-
-        cls._spaces = spaces
-
-        # Build dependency graph for conditional spaces
-        if spaces:
-            try:
-                cls._dependency_graph = DependencyGraph(spaces)
-            except ValueError as e:
-                raise TypeError(f"Error in Config class '{name}': {e}") from e
-        else:
-            cls._dependency_graph = None
-
-        return cls
-
-
-class Config(BaseModel, metaclass=ConfigMeta):
+class Config(BaseModel):
     """
     Base class for searchable configuration objects.
 
@@ -106,6 +48,39 @@ class Config(BaseModel, metaclass=ConfigMeta):
         "frozen": False,  # Allow mutation
         "arbitrary_types_allowed": True,  # Allow Space descriptors
     }
+
+    def __init_subclass__(cls, **kwargs: Any) -> None:
+        """
+        Called when a subclass is created. Collects Space descriptors
+        and builds dependency graph.
+        """
+        super().__init_subclass__(**kwargs)
+
+        # Collect all Space fields defined in this class and parents
+        spaces: dict[str, Space] = {}
+
+        # Inherit spaces from parent classes
+        for base in cls.__mro__[1:]:  # Skip cls itself
+            if hasattr(base, "_spaces"):
+                for key, value in base._spaces.items():
+                    if key not in spaces:
+                        spaces[key] = value
+
+        # Add spaces from this class (can override parent)
+        for key, value in cls.__dict__.items():
+            if isinstance(value, Space):
+                spaces[key] = value
+
+        cls._spaces = spaces
+
+        # Build dependency graph for conditional spaces
+        if spaces:
+            try:
+                cls._dependency_graph = DependencyGraph(spaces)
+            except ValueError as e:
+                raise TypeError(f"Error in Config class '{cls.__name__}': {e}") from e
+        else:
+            cls._dependency_graph = None
 
     @model_validator(mode="before")
     @classmethod
@@ -350,7 +325,7 @@ class Config(BaseModel, metaclass=ConfigMeta):
     def __repr__(self) -> str:
         """Return a detailed string representation."""
         field_strs = []
-        for field_name in self.model_fields:
+        for field_name in self.__class__.model_fields:
             value = getattr(self, field_name, None)
             field_strs.append(f"{field_name}={value!r}")
 
