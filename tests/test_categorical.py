@@ -154,10 +154,10 @@ class TestCategoricalSpace:
         """Test that numeric choices work correctly."""
         space = Categorical([1, 2, 3])
         space.field_name = "test"
-        
+
         assert space.validate(1) == 1
         assert space.validate(2) == 2
-        
+
         for _ in range(20):
             value = space.sample()
             assert value in [1, 2, 3]

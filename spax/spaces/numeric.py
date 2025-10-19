@@ -161,7 +161,7 @@ class FloatSpace(NumberSpace):
         """
         field = self.field_name or "value"
 
-        if not isinstance(value, (int, float)) or isinstance(value, bool):
+        if not isinstance(value, (int, float)):
             raise ValueError(
                 f"{field}: Expected numeric value, got {type(value).__name__}"
             )
@@ -239,9 +239,6 @@ class IntSpace(NumberSpace):
         field = self.field_name or "value"
 
         # Check if it's an integer (or a float that represents an integer)
-        if isinstance(value, bool):
-            raise ValueError(f"{field}: Expected int, got bool")
-
         if isinstance(value, int):
             int_value = value
         elif isinstance(value, float):

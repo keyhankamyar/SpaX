@@ -520,13 +520,12 @@ class Lambda(Condition):
         >>> condition(5)  # False
     """
 
-    def __init__(self, func: Callable[[Any], bool], description: str = "") -> None:
+    def __init__(self, func: Callable[[Any], bool]) -> None:
         """
         Initialize with a callable.
 
         Args:
             func: Function that takes a value and returns a boolean.
-            description: Optional description for repr.
 
         Raises:
             TypeError: If func is not callable.
@@ -534,14 +533,27 @@ class Lambda(Condition):
         if not callable(func):
             raise TypeError(f"func must be callable, got {type(func).__name__}")
         self.func = func
-        self.description = description
 
     def __call__(self, value: Any) -> bool:
         """Apply the custom function."""
-        return self.func(value)
+        result = self.func(value)
+        if not isinstance(result, bool):
+            raise TypeError(
+                f"Lambda condition function must return bool, got {type(result).__name__}"
+            )
+        return result
 
     def __repr__(self) -> str:
         """Return a string representation."""
-        if self.description:
-            return f"Lambda({self.description!r})"
-        return "Lambda(<function>)"
+        import inspect
+
+        # Try to get useful information about the function
+        func_name = getattr(self.func, "__name__", "<lambda>")
+
+        # Try to get signature
+        try:
+            sig = inspect.signature(self.func)
+            return f"Lambda({func_name}{sig})"
+        except (ValueError, TypeError):
+            # Fallback if signature extraction fails
+            return f"Lambda({func_name})"

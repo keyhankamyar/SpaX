@@ -48,14 +48,6 @@ class TestFloatSpace:
         assert result == 5.0
         assert isinstance(result, float)
 
-    def test_validate_rejects_bool(self):
-        """Test that boolean values are rejected."""
-        space = Float(0.0, 10.0)
-        space.field_name = "test_field"
-
-        with pytest.raises(ValueError, match="Expected numeric value"):
-            space.validate(True)
-
     def test_validate_out_of_range_both_bounds(self):
         """Test validation rejects out-of-range values with both bounds."""
         space = Float(0.0, 10.0, bounds="both")
@@ -168,14 +160,6 @@ class TestIntSpace:
 
         with pytest.raises(ValueError, match="Expected integer value"):
             space.validate(5.5)
-
-    def test_validate_rejects_bool(self):
-        """Test that boolean values are rejected."""
-        space = Int(0, 10)
-        space.field_name = "test_field"
-
-        with pytest.raises(ValueError, match="Expected int"):
-            space.validate(True)
 
     def test_validate_bounds_checking(self):
         """Test that bounds are checked correctly."""

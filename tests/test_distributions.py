@@ -1,12 +1,13 @@
 """Tests for distribution classes."""
 
 import pytest
+
 from spax.distributions import (
-    UniformDistribution,
-    LogDistribution,
-    CategoricalDistribution,
-    UNIFORM,
     LOG,
+    UNIFORM,
+    CategoricalDistribution,
+    LogDistribution,
+    UniformDistribution,
 )
 
 

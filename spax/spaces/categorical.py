@@ -156,8 +156,13 @@ class CategoricalSpace(Space[Any]):
                 if isinstance(value, choice):
                     return value
             # For regular values, check equality
-            elif value == choice:
-                return value
+            else:
+                if not hasattr(value, "__eq__"):
+                    raise TypeError(
+                        f"{field}: Value {value!r} must be comparable (have __eq__ method)"
+                    )
+                if value == choice:
+                    return value
 
         raise ValueError(
             f"{field}: Value {value!r} not in allowed choices {self.choices}"
