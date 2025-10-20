@@ -1,8 +1,9 @@
 """
-Conditional search spaces for dependent parameter relationships.
+Conditional spaces that activate different branches based on configuration state.
 
-This module provides conditional spaces where the valid range or choice
-depends on the value of other fields in the configuration.
+ConditionalSpace allows defining parameters whose type, range, or value depends
+on other configuration fields. The top-level condition must be an AttributeCondition
+to enable proper dependency tracking and ordered sampling.
 """
 
 from typing import Any
@@ -11,40 +12,60 @@ from pydantic import GetCoreSchemaHandler
 from pydantic_core import CoreSchema, core_schema
 
 from .base import UNSET, Space, _Unset
-from .conditions import Condition
+from .conditions import AttributeCondition
 
 
 class ConditionalSpace(Space[Any]):
     """
-    Search space that switches between options based on a condition.
+    A space that conditionally activates one of two branches based on config state.
 
-    The condition is evaluated against the configuration object during
-    validation and sampling. This enables complex dependent parameter
-    relationships.
+    The condition must be an AttributeCondition (FieldCondition or MultiFieldLambda)
+    at the top level to ensure proper dependency tracking. The branches can contain
+    any Space types, fixed values, or nested ConditionalSpaces.
 
-    Example:
-        >>> # Different range based on another field
-        >>> learning_rate_multiplier: float = Conditional(
-        ...     condition=FieldCondition("optimizer", EqualsTo("sgd")),
-        ...     true=Float(0.1, 10.0),      # Higher for SGD
-        ...     false=Float(0.01, 1.0)       # Lower for Adam
-        ... )
+    Examples:
+        >>> import spax as sp
         >>>
-        >>> # Nested conditionals
-        >>> depth: int = Conditional(
-        ...     condition=FieldCondition("model_type", EqualsTo("transformer")),
-        ...     true=Conditional(
-        ...         condition=FieldCondition("size", EqualsTo("large")),
-        ...         true=Int(12, 24),
-        ...         false=Int(6, 12)
-        ...     ),
-        ...     false=Int(1, 6)
-        ... )
+        >>> # Simple field-based conditional
+        >>> class MyConfig(sp.Config):
+        ...     use_dropout: bool
+        ...     dropout_rate: float = sp.Conditional(
+        ...         sp.FieldCondition("use_dropout", sp.EqualsTo(True)),
+        ...         true=sp.Float(gt=0, lt=0.5),
+        ...         false=0.0
+        ...     )
+        >>>
+        >>> # Multi-field conditional
+        >>> class TrainingConfig(sp.Config):
+        ...     batch_size: int = sp.Int(ge=1, le=128)
+        ...     grad_accumulation_steps: int = sp.Int(ge=1, le=32)
+        ...     optimizer: str = sp.Conditional(
+        ...         sp.MultiFieldLambda(
+        ...             ["batch_size", "grad_accumulation_steps"],
+        ...             lambda batch_size, grad_accumulation_steps:
+        ...                 batch_size * grad_accumulation_steps > 64
+        ...         ),
+        ...         true="adam",
+        ...         false="sgd"
+        ...     )
+        >>>
+        >>> # Nested conditionals with different space types
+        >>> class ModelConfig(sp.Config):
+        ...     model_type: str = sp.Categorical(["transformer", "cnn", "rnn"])
+        ...     hidden_size: int = sp.Conditional(
+        ...         sp.FieldCondition("model_type", sp.EqualsTo("transformer")),
+        ...         true=sp.Conditional(
+        ...             sp.FieldCondition("model_type", sp.EqualsTo("transformer")),
+        ...             true=sp.Int(ge=512, le=2048),
+        ...             false=sp.Int(ge=128, le=512)
+        ...         ),
+        ...         false=sp.Int(ge=64, le=256)
+        ...     )
     """
 
     def __init__(
         self,
-        condition: Condition,
+        condition: AttributeCondition,
         *,
         true: Space[Any] | Any,
         false: Space[Any] | Any,
@@ -55,12 +76,24 @@ class ConditionalSpace(Space[Any]):
         Initialize a conditional space.
 
         Args:
-            condition: Condition to evaluate.
-            true: Space or fixed value to use when condition is True.
-            false: Space or fixed value to use when condition is False.
-            default: Default value to use when not specified.
-            description: Human-readable description of this parameter.
+            condition: AttributeCondition that determines which branch to activate.
+                Must be FieldCondition or MultiFieldLambda at the top level.
+            true: Space or fixed value used when condition evaluates to True
+            false: Space or fixed value used when condition evaluates to False
+            default: Default value for the space
+            description: Description of this conditional parameter
+
+        Raises:
+            TypeError: If condition is not an AttributeCondition
         """
+        if not isinstance(condition, AttributeCondition):
+            raise TypeError(
+                f"ConditionalSpace requires an AttributeCondition "
+                f"(FieldCondition or MultiFieldLambda) at the top level, "
+                f"got {type(condition).__name__}. AttributeConditions are required "
+                f"for proper dependency tracking and ordered sampling."
+            )
+
         self.condition = condition
         self.true_branch = true
         self.false_branch = false
@@ -238,7 +271,7 @@ class ConditionalSpace(Space[Any]):
 
 
 def Conditional(
-    condition: Condition,
+    condition: AttributeCondition,
     *,
     true: Space[Any] | Any,
     false: Space[Any] | Any,
@@ -252,24 +285,52 @@ def Conditional(
         my_param: float = Conditional(...)
 
     Args:
-        condition: Condition to evaluate.
-        true: Space or value to use when condition is True.
-        false: Space or value to use when condition is False.
-        default: Default value to use when not specified.
-        description: Human-readable description of this parameter.
+        condition: AttributeCondition determining which branch to activate
+        true: Space or value when condition is True
+        false: Space or value when condition is False
+        default: Default value
+        description: Description of the parameter
 
     Returns:
         A ConditionalSpace instance.
 
-    Example:
-        >>> class MyConfig(Config):
-        ...     optimizer: str = Categorical(["adam", "sgd"])
-        ...     learning_rate: float = Conditional(
-        ...         condition=FieldCondition("optimizer", EqualsTo("sgd")),
-        ...         true=Float(ge=0.01, le=1.0),
-        ...         false=Float(ge=0.0001, le=0.01),
-        ...         default=0.001,
-        ...         description="Learning rate for training"
+    Examples:
+        >>> import spax as sp
+        >>>
+        >>> # Simple field-based conditional
+        >>> class MyConfig(sp.Config):
+        ...     use_dropout: bool
+        ...     dropout_rate: float = sp.Conditional(
+        ...         sp.FieldCondition("use_dropout", sp.EqualsTo(True)),
+        ...         true=sp.Float(gt=0, lt=0.5),
+        ...         false=0.0
+        ...     )
+        >>>
+        >>> # Multi-field conditional
+        >>> class TrainingConfig(sp.Config):
+        ...     batch_size: int = sp.Int(ge=1, le=128)
+        ...     grad_accumulation_steps: int = sp.Int(ge=1, le=32)
+        ...     optimizer: str = sp.Conditional(
+        ...         sp.MultiFieldLambda(
+        ...             ["batch_size", "grad_accumulation_steps"],
+        ...             lambda batch_size, grad_accumulation_steps:
+        ...                 batch_size * grad_accumulation_steps > 64
+        ...         ),
+        ...         true="adam",
+        ...         false="sgd"
+        ...     )
+        >>>
+        >>> # Nested conditionals with different space types
+        >>> class ModelConfig(sp.Config):
+        ...     model_type: str = sp.Categorical(["transformer", "cnn", "rnn"])
+        ...     hidden_size: int = sp.Conditional(
+        ...         sp.FieldCondition("model_type", sp.EqualsTo("transformer")),
+        ...         true=sp.Conditional(
+        ...             sp.FieldCondition("model_type", sp.EqualsTo("transformer")),
+        ...             true=sp.Int(ge=512, le=2048),
+        ...             false=sp.Int(ge=128, le=512)
+        ...         ),
+        ...         false=sp.Int(ge=64, le=256)
         ...     )
     """
     return ConditionalSpace(

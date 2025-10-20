@@ -45,6 +45,7 @@ from .distributions import (
 from .spaces import (
     UNSET,
     And,
+    AttributeCondition,
     Categorical,
     CategoricalSpace,
     Choice,
@@ -61,9 +62,11 @@ from .spaces import (
     IsInstance,
     Lambda,
     LargerThan,
+    MultiFieldLambdaCondition,
     Not,
     NotEqualsTo,
     NotIn,
+    ObjectCondition,
     Or,
     SmallerThan,
     Space,
@@ -87,9 +90,14 @@ __all__ = [
     "ConditionalSpace",
     "Space",
     "UNSET",
-    # Conditions
+    # Conditions - Base classes
     "Condition",
+    "AttributeCondition",
+    "ObjectCondition",
+    # Conditions - Attribute conditions
     "FieldCondition",
+    "MultiFieldLambdaCondition",
+    # Conditions - Object conditions
     "EqualsTo",
     "NotEqualsTo",
     "In",

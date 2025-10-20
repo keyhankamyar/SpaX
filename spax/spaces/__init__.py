@@ -1,29 +1,28 @@
-# spax/spaces/__init__.py
 """
-Search space definitions for hyperparameter optimization.
+Space definitions for SpaX configuration parameters.
 
-This package provides space types (Float, Int, Categorical, Conditional) that define
-searchable parameter ranges with validation and sampling capabilities.
+This module provides the core Space types used to define search spaces for
+hyperparameter optimization and configuration management.
 """
 
 from .base import UNSET, Space
 from .categorical import Categorical, CategoricalSpace, Choice
-from .conditional import (
-    Condition,
-    Conditional,
-    ConditionalSpace,
-)
+from .conditional import Conditional, ConditionalSpace
 from .conditions import (
     And,
+    AttributeCondition,
+    Condition,
     EqualsTo,
     FieldCondition,
     In,
     IsInstance,
     Lambda,
     LargerThan,
+    MultiFieldLambdaCondition,
     Not,
     NotEqualsTo,
     NotIn,
+    ObjectCondition,
     Or,
     SmallerThan,
 )
@@ -46,9 +45,14 @@ __all__ = [
     # Conditional spaces
     "Conditional",
     "ConditionalSpace",
-    # Conditions
+    # Conditions - Base classes
     "Condition",
+    "AttributeCondition",
+    "ObjectCondition",
+    # Conditions - Attribute conditions
     "FieldCondition",
+    "MultiFieldLambdaCondition",
+    # Conditions - Object conditions
     "EqualsTo",
     "NotEqualsTo",
     "In",
@@ -60,6 +64,6 @@ __all__ = [
     "Or",
     "Not",
     "Lambda",
-    # Auto inference:
+    # Auto inference
     "infer_space_from_field_info",
 ]

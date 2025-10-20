@@ -1,21 +1,13 @@
 """
-Configuration base class with integrated search space support.
+Dependency graph management for conditional configuration spaces.
 
-This module provides the Config class that combines Pydantic's
-validation with searchable parameter spaces for HPO.
+Builds and validates dependency relationships between configuration fields,
+ensuring ConditionalSpaces can be properly ordered for sampling and validation.
 """
 
 from typing import Any
 
-from .spaces import (
-    And,
-    Condition,
-    ConditionalSpace,
-    FieldCondition,
-    Not,
-    Or,
-    Space,
-)
+from .spaces import ConditionalSpace, Space
 
 
 class DependencyGraph:
@@ -34,6 +26,10 @@ class DependencyGraph:
 
         Args:
             spaces: Dictionary of field names to Space objects.
+
+        Raises:
+            ValueError: If circular dependencies are detected or if a dependency
+                references an unknown field
         """
         self.spaces = spaces
         self.dependencies: dict[str, set[str]] = {}
@@ -41,73 +37,13 @@ class DependencyGraph:
         self._build_dependencies()
         self._validate_and_order()
 
-    def _extract_field_dependencies(self, condition: Condition) -> set[str]:
-        """
-        Recursively extract field names that a condition depends on.
-
-        Args:
-            condition: The condition to analyze.
-
-        Returns:
-            Set of field names this condition depends on.
-        """
-
-        deps: set[str] = set()
-
-        if isinstance(condition, FieldCondition):
-            deps.add(condition.field_name)
-            # Recursively check nested conditions
-            deps.update(self._extract_field_dependencies(condition.condition))
-        elif isinstance(condition, (And, Or)):
-            for sub_condition in condition.conditions:
-                deps.update(self._extract_field_dependencies(sub_condition))
-        elif isinstance(condition, Not):
-            deps.update(self._extract_field_dependencies(condition.condition))
-
-        return deps
-
     def _build_dependencies(self) -> None:
-        """
-        Build dependency graph from conditional spaces.
-
-        For each field, determines which other fields it depends on.
-        """
+        """Build the dependency map for all spaces."""
         for field_name, space in self.spaces.items():
-            deps: set[str] = set()
-
             if isinstance(space, ConditionalSpace):
-                # Extract dependencies from the condition
-                deps.update(self._extract_field_dependencies(space.condition))
-
-                # Also check nested conditionals in branches
-                for branch in [space.true_branch, space.false_branch]:
-                    if isinstance(branch, ConditionalSpace):
-                        # Recursive dependency extraction for nested conditionals
-                        nested_deps = self._extract_dependencies_from_space(branch)
-                        deps.update(nested_deps)
-
-            self.dependencies[field_name] = deps
-
-    def _extract_dependencies_from_space(self, space: Space) -> set[str]:
-        """
-        Recursively extract all dependencies from a space.
-
-        Args:
-            space: The space to analyze.
-
-        Returns:
-            Set of field names this space depends on.
-        """
-        deps: set[str] = set()
-
-        if isinstance(space, ConditionalSpace):
-            deps.update(self._extract_field_dependencies(space.condition))
-
-            for branch in [space.true_branch, space.false_branch]:
-                if isinstance(branch, ConditionalSpace):
-                    deps.update(self._extract_dependencies_from_space(branch))
-
-        return deps
+                self.dependencies[field_name] = space.condition.get_required_fields()
+            else:
+                self.dependencies[field_name] = set()
 
     def _validate_and_order(self) -> None:
         """
@@ -121,6 +57,7 @@ class DependencyGraph:
         # Calculate in-degrees
         in_degree: dict[str, int] = dict.fromkeys(self.spaces, 0)
 
+        # Validate all dependencies refer to known fields
         for field_name, deps in self.dependencies.items():
             for dep in deps:
                 if dep not in self.spaces:
