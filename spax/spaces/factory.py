@@ -4,7 +4,8 @@ This module provides utilities to automatically create Space objects from
 standard Python type hints and Pydantic field definitions.
 """
 
-from typing import Any, Literal, get_args, get_origin
+import types
+from typing import Any, Literal, Union, get_args, get_origin
 
 from pydantic.fields import FieldInfo
 from pydantic_core import PydanticUndefined
@@ -66,6 +67,43 @@ def _infer_numeric_space(
         )
 
 
+def _flatten_union_to_choices(union_args: tuple[Any, ...]) -> list[Any]:
+    """
+    Flatten Union types into a list of choices for Categorical.
+
+    Handles:
+    - Config subclasses → kept as-is
+    - bool → expanded to [True, False]
+    - Literal[...] → expanded to list of literal values
+    - None → kept as-is
+    """
+    from spax.config import Config
+
+    choices: list[Any] = []
+
+    for arg in union_args:
+        origin = get_origin(arg)
+
+        # Handle Literal types
+        if origin is Literal:
+            literal_values = get_args(arg)
+            choices.extend(literal_values)
+        # Handle bool
+        elif arg is bool:
+            choices.extend([True, False])
+        # Handle None
+        elif arg is type(None):
+            choices.append(None)
+        # Handle Config subclasses
+        elif isinstance(arg, type) and issubclass(arg, Config):
+            choices.append(arg)
+        # Unsupported types
+        else:
+            return []
+
+    return choices
+
+
 def infer_space_from_field_info(field_info: FieldInfo) -> Space | None:
     """
     Infer a Space from a Pydantic FieldInfo.
@@ -77,7 +115,6 @@ def infer_space_from_field_info(field_info: FieldInfo) -> Space | None:
         An inferred Space object, or None if inference is not possible
     """
     annotation = field_info.annotation
-
     origin = get_origin(annotation)
 
     # Extract common field info attributes
@@ -92,6 +129,14 @@ def infer_space_from_field_info(field_info: FieldInfo) -> Space | None:
         # Handle description
         if field_info.description is not None:
             description = field_info.description
+
+    # Check for both types.UnionType (|) and typing.Union
+    if origin is Union or isinstance(annotation, types.UnionType):
+        union_args = get_args(annotation)
+        choices = _flatten_union_to_choices(union_args)
+        if not choices:
+            return None
+        return Categorical(choices, default=default, description=description)
 
     # Handle bool type
     if annotation is bool:
