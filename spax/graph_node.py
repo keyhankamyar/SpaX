@@ -41,8 +41,8 @@ class GraphNode:
     def __init__(
         self,
         annotation: type,
-        space: Space | None,
-        has_default: bool,
+        space: Space | None = None,
+        has_default: bool = False,
         fixed_value: Any | None = None,
         is_default_factory: bool | None = None,
     ) -> None:
@@ -124,7 +124,7 @@ class GraphNode:
         return self._dependencies.copy()
 
     @property
-    def children(self) -> dict[str, "GraphNode"]:
+    def children(self) -> dict[str, Self]:
         """Dictionary of child nodes (immutable view)."""
         return self._children.copy()
 
@@ -215,8 +215,6 @@ class GraphNode:
                     # Fixed value choice
                     child_node = GraphNode(
                         annotation=type(choice),
-                        space=None,
-                        has_default=False,
                         fixed_value=choice,
                     )
                     key = str(choice)
@@ -233,8 +231,6 @@ class GraphNode:
                 true_node = GraphNode(
                     annotation=self._annotation,  # Same annotation as parent
                     space=true_branch,
-                    has_default=False,
-                    fixed_value=None,
                 )
             elif isinstance(true_branch, type) and issubclass(true_branch, Config):
                 true_node = true_branch._root_node
@@ -242,8 +238,6 @@ class GraphNode:
                 # Fixed value
                 true_node = GraphNode(
                     annotation=type(true_branch),
-                    space=None,
-                    has_default=False,
                     fixed_value=true_branch,
                 )
 
@@ -253,8 +247,6 @@ class GraphNode:
                 false_node = GraphNode(
                     annotation=self._annotation,
                     space=false_branch,
-                    has_default=False,
-                    fixed_value=None,
                 )
             elif isinstance(false_branch, type) and issubclass(false_branch, Config):
                 false_node = false_branch._root_node
@@ -262,8 +254,6 @@ class GraphNode:
                 # Fixed value
                 false_node = GraphNode(
                     annotation=type(false_branch),
-                    space=None,
-                    has_default=False,
                     fixed_value=false_branch,
                 )
 

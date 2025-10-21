@@ -15,8 +15,6 @@ from .spaces import (
     UNSET,
     CategoricalSpace,
     ConditionalSpace,
-    FloatSpace,
-    IntSpace,
     Space,
     infer_space_from_field_info,
 )
@@ -151,12 +149,7 @@ class Config(BaseModel):
 
         # Build root node for graph representation and dependency tracking
         try:
-            cls._root_node = GraphNode(
-                annotation=cls,
-                space=None,
-                has_default=False,
-                fixed_value=None,
-            )
+            cls._root_node = GraphNode(cls)
         except (ValueError, TypeError) as e:
             raise TypeError(f"Error in Config class '{cls.__name__}': {e}") from e
 
@@ -189,55 +182,43 @@ class Config(BaseModel):
         # Create a temporary object to hold values for condition evaluation
         temp_obj = type("TempConfig", (), {})()
 
-        # Get ordered fields from root node
         assert cls._root_node
-        assert cls._root_node.field_order
-        ordered_fields = cls._root_node.field_order
+        # Get ordered nodes from root node and validate in dependency order
+        for field_name, field_node in cls._root_node.ordered_children():
+            space = field_node.space
 
-        # validate non-conditional spaces and set temp values
-        for field_name in ordered_fields:
-            space = cls._spaces.get(field_name)
-
-            # If field not in data, try to use default
-            if field_name not in data:
+            # Find the value
+            if field_name in data:
+                value = data[field_name]
+            else:
+                # If field not in data, try to use default
                 if space is not None and space.default is not UNSET:
                     value = space.default
                 else:
                     raise RuntimeError(
                         f"Field '{field_name}' not provided in the data and has no default value"
                     )
-            else:
-                value = data[field_name]
 
-            if space is None:
-                validated[field_name] = value
-                setattr(temp_obj, field_name, value)
-                continue
+            # Validate it
+            if space is not None:
+                if isinstance(space, ConditionalSpace):
+                    try:
+                        value = space.validate_with_config(value, temp_obj)
+                    except ValueError as e:
+                        raise ValueError(
+                            f"Validation failed for conditional field '{field_name}': {e}"
+                        ) from e
+                else:
+                    # Validate non-conditional spaces
+                    try:
+                        value = space.validate(value)
+                    except ValueError as e:
+                        raise ValueError(
+                            f"Validation failed for field '{field_name}': {e}"
+                        ) from e
 
-            if isinstance(space, ConditionalSpace):
-                value = data[field_name]
-                try:
-                    validated_value = space.validate_with_config(value, temp_obj)
-                except ValueError as e:
-                    raise ValueError(
-                        f"Validation failed for conditional field '{field_name}': {e}"
-                    ) from e
-            else:
-                # Validate non-conditional spaces
-                try:
-                    validated_value = space.validate(value)
-                except ValueError as e:
-                    raise ValueError(
-                        f"Validation failed for field '{field_name}': {e}"
-                    ) from e
-
-            validated[field_name] = validated_value
-            setattr(temp_obj, field_name, validated_value)
-
-        # Add any non-space fields
-        for field_name, value in data.items():
-            if field_name not in validated:
-                validated[field_name] = value
+            validated[field_name] = value
+            setattr(temp_obj, field_name, value)
 
         return validated
 
@@ -309,109 +290,6 @@ class Config(BaseModel):
 
         return cls(**kwargs)
 
-    @classmethod
-    def get_space_info(cls) -> dict[str, dict[str, Any]]:
-        """
-        Get structured information about all search spaces in this Config.
-
-        Returns a dictionary mapping field names to their space metadata,
-        including ranges, distributions, choices, probabilities, and
-        conditional dependencies.
-
-        Returns:
-            Dictionary with field names as keys and space info dicts as values.
-
-        Example:
-            >>> info = TrainingConfig.get_space_info()
-            >>> print(info["learning_rate"])
-            {
-                'type': 'FloatSpace',
-                'low': 1e-05,
-                'high': 0.1,
-                'distribution': 'LogDistribution',
-                'bounds': 'both'
-            }
-        """
-        info: dict[str, dict[str, Any]] = {}
-
-        for field_name, space in cls._spaces.items():
-            space_info: dict[str, Any]
-            if isinstance(space, (FloatSpace, IntSpace)):
-                space_info = {
-                    "type": space.__class__.__name__,
-                    "low": space.low,
-                    "high": space.high,
-                    "low_inclusive": space.low_inclusive,
-                    "high_inclusive": space.high_inclusive,
-                    "distribution": space.distribution.__class__.__name__,
-                }
-            elif isinstance(space, CategoricalSpace):
-                space_info = {
-                    "type": "CategoricalSpace",
-                    "choices": space.choices,
-                    "weights": space.weights,
-                    "probs": space.probs,
-                }
-            elif isinstance(space, ConditionalSpace):
-                space_info = {
-                    "type": "ConditionalSpace",
-                    "condition": repr(space.condition),
-                    "true_branch": space.true_branch.__class__.__name__
-                    if isinstance(space.true_branch, Space)
-                    else repr(space.true_branch),
-                    "false_branch": space.false_branch.__class__.__name__
-                    if isinstance(space.false_branch, Space)
-                    else repr(space.false_branch),
-                }
-
-                assert cls._root_node
-                node = cls._root_node.get_child(field_name)
-                if node:
-                    space_info["depends_on"] = list(node.dependencies)
-            else:
-                # Generic fallback for custom Space types
-                space_info = {
-                    "type": space.__class__.__name__,
-                    "details": str(space),
-                }
-
-            info[field_name] = space_info
-
-        return info
-
-    @classmethod
-    def get_dependency_info(cls) -> dict[str, Any]:
-        """Get dependency information from the graph structure.
-
-        Returns a dictionary with nodes, edges, order, and dependencies
-        for visualization and analysis purposes.
-        """
-        if cls._root_node is None:
-            return {
-                "nodes": list(cls._spaces.keys()),
-                "edges": [],
-                "order": list(cls._spaces.keys()),
-                "dependencies": {},
-            }
-
-        # Build edges from dependencies
-        edges: list[dict[str, str]] = []
-        dependencies: dict[str, list[str]] = {}
-
-        for field_name, child_node in cls._root_node.children.items():
-            deps = child_node.dependencies
-            if deps:
-                dependencies[field_name] = list(deps)
-                for dep in deps:
-                    edges.append({"from": dep, "to": field_name})
-
-        return {
-            "nodes": list(cls._root_node.children.keys()),
-            "edges": edges,
-            "order": cls._root_node.field_order,
-            "dependencies": dependencies,
-        }
-
     def __repr__(self) -> str:
         """Return a detailed string representation."""
         field_strs = []
@@ -420,3 +298,6 @@ class Config(BaseModel):
             field_strs.append(f"{field_name}={value!r}")
 
         return f"{self.__class__.__name__}({', '.join(field_strs)})"
+
+    def __str__(self) -> str:
+        return self.__repr__()
