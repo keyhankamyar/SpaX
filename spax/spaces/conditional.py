@@ -169,6 +169,8 @@ class ConditionalSpace(Space[Any]):
             ValueError: If validation fails.
             RuntimeError: If the conditional cannot be evaluated.
         """
+        from spax.config import Config
+
         try:
             active_branch = self._get_active_branch(config)
         except Exception as e:
@@ -188,8 +190,14 @@ class ConditionalSpace(Space[Any]):
             else:
                 return active_branch.validate(value)
         else:
+            if isinstance(active_branch, type) and issubclass(active_branch, Config):
+                if not isinstance(value, active_branch):
+                    raise ValueError(
+                        f"{self.field_name}: Expected {active_branch.__name__} instance, "
+                        f"got {value!r}"
+                    )
             # Fixed value - check equality
-            if value != active_branch:
+            elif value != active_branch:
                 raise ValueError(
                     f"{self.field_name}: Expected fixed value {active_branch!r}, "
                     f"got {value!r}"

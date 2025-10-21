@@ -4,7 +4,7 @@ This module provides utilities to automatically create Space objects from
 standard Python type hints and Pydantic field definitions.
 """
 
-import types
+from types import UnionType
 from typing import Any, Literal, Union, get_args, get_origin
 
 from pydantic.fields import FieldInfo
@@ -131,7 +131,7 @@ def infer_space_from_field_info(field_info: FieldInfo) -> Space | None:
             description = field_info.description
 
     # Check for both types.UnionType (|) and typing.Union
-    if origin is Union or isinstance(annotation, types.UnionType):
+    if origin is Union or isinstance(annotation, UnionType):
         union_args = get_args(annotation)
         choices = _flatten_union_to_choices(union_args)
         if not choices:

@@ -10,7 +10,7 @@ from typing import Any, ClassVar, Self
 from pydantic import BaseModel, model_validator
 from pydantic_core import PydanticUndefined
 
-from .dependency_graph import DependencyGraph
+from .graph_node import GraphNode
 from .spaces import (
     UNSET,
     CategoricalSpace,
@@ -50,7 +50,7 @@ class Config(BaseModel):
     """
 
     _spaces: ClassVar[dict[str, Space]] = {}
-    _dependency_graph: ClassVar[DependencyGraph | None] = None
+    _root_node: ClassVar[GraphNode | None] = None
 
     model_config = {
         "validate_assignment": True,  # Validate on attribute assignment
@@ -60,8 +60,7 @@ class Config(BaseModel):
 
     def __init_subclass__(cls, **kwargs: Any) -> None:
         """
-        Called when a subclass is created. Collects Space descriptors
-        and builds dependency graph.
+        Called when a subclass is created. Collects Space descriptors.
         """
         super().__init_subclass__(**kwargs)
 
@@ -150,12 +149,16 @@ class Config(BaseModel):
         for field_name in spaces_to_remove:
             del cls._spaces[field_name]
 
-        # Build dependency graph for conditional spaces
-        if cls._spaces:
-            try:
-                cls._dependency_graph = DependencyGraph(cls._spaces)
-            except ValueError as e:
-                raise TypeError(f"Error in Config class '{cls.__name__}': {e}") from e
+        # Build root node for graph representation and dependency tracking
+        try:
+            cls._root_node = GraphNode(
+                annotation=cls,
+                space=None,
+                has_default=False,
+                fixed_value=None,
+            )
+        except (ValueError, TypeError) as e:
+            raise TypeError(f"Error in Config class '{cls.__name__}': {e}") from e
 
     @model_validator(mode="before")
     @classmethod
@@ -186,11 +189,10 @@ class Config(BaseModel):
         # Create a temporary object to hold values for condition evaluation
         temp_obj = type("TempConfig", (), {})()
 
-        # Get ordered fields if we have a dependency graph
-        if cls._dependency_graph:
-            ordered_fields = cls._dependency_graph.get_ordered_fields()
-        else:
-            ordered_fields = list(cls._spaces.keys())
+        # Get ordered fields from root node
+        assert cls._root_node
+        assert cls._root_node.field_order
+        ordered_fields = cls._root_node.field_order
 
         # validate non-conditional spaces and set temp values
         for field_name in ordered_fields:
@@ -268,56 +270,42 @@ class Config(BaseModel):
         # Create a temporary object to hold values for condition evaluation
         temp_obj = type("TempConfig", (), {})()
 
-        # Get ordered fields if we have a dependency graph
-        if cls._dependency_graph:
-            ordered_fields = cls._dependency_graph.get_ordered_fields()
-        else:
-            ordered_fields = list(cls._spaces.keys())
+        assert cls._root_node
+        # Get ordered nodes from root node and sample in dependency order
+        for field_name, field_node in cls._root_node.ordered_children():
+            # Sample each space field
+            if (space := field_node.space) is not None:
+                # Use default if available and use_defaults is True
+                if use_defaults and space.default is not UNSET:
+                    value = space.default
+                else:
+                    # Sample from the space
+                    if isinstance(space, ConditionalSpace):
+                        # Sample with config context
+                        value = space.sample_with_config(temp_obj)
+                    else:
+                        # Regular sampling
+                        value = space.sample()
 
-        # Sample each space field in dependency order
-        for field_name in ordered_fields:
-            space = cls._spaces[field_name]
+                    # Categorical or Conditional with inner Config case
+                    if isinstance(value, type) and issubclass(value, Config):
+                        value = value.random(use_defaults=use_defaults)
 
-            # Use default if available and use_defaults is True
-            if use_defaults and space.default is not UNSET:
-                value = space.default
+            # Check if field is a nested Config
+            elif isinstance(field_node.annotation, type) and issubclass(
+                field_node.annotation, Config
+            ):
+                value = field_node.annotation.random(use_defaults=use_defaults)
+            # Field must be fixed
             else:
-                # Sample from the space
-                if isinstance(space, ConditionalSpace):
-                    # Sample with config context
-                    value = space.sample_with_config(temp_obj)
-                else:
-                    # Regular sampling
-                    value = space.sample()
-
-            # Handle nested Spaces (shouldn't happen but keep for safety)
-            while isinstance(value, Space):
-                if isinstance(value, ConditionalSpace):
-                    value = value.sample_with_config(temp_obj)
-                else:
-                    value = value.sample()
-
-            # If the sampled value is a Config class (not instance), instantiate it
-            if isinstance(value, type) and issubclass(value, Config):
-                value = value.random(use_defaults=use_defaults)
+                # Add default values for non-space fields
+                default = field_node.fixed_value
+                assert default is not None
+                assert field_node.is_default_factory is not None
+                value = default() if field_node.is_default_factory else default
 
             kwargs[field_name] = value
             setattr(temp_obj, field_name, value)
-
-        # Add default values for non-space fields
-        for field_name, field_info in cls.model_fields.items():
-            if field_name not in kwargs:
-                annotation = field_info.annotation
-                # Use default if available
-                if isinstance(annotation, type) and issubclass(annotation, Config):
-                    # Recursively generate random nested config
-                    kwargs[field_name] = annotation.random(use_defaults=use_defaults)
-                elif field_info.default is not PydanticUndefined:
-                    kwargs[field_name] = field_info.default
-                elif field_info.default_factory is not None:
-                    # Call the factory function
-                    factory = field_info.default_factory
-                    kwargs[field_name] = factory()  # type: ignore
 
         return cls(**kwargs)
 
@@ -376,9 +364,10 @@ class Config(BaseModel):
                     else repr(space.false_branch),
                 }
 
-                if cls._dependency_graph:
-                    deps = cls._dependency_graph.get_dependencies(field_name)
-                    space_info["depends_on"] = list(deps)
+                assert cls._root_node
+                node = cls._root_node.get_child(field_name)
+                if node:
+                    space_info["depends_on"] = list(node.dependencies)
             else:
                 # Generic fallback for custom Space types
                 space_info = {
@@ -392,22 +381,12 @@ class Config(BaseModel):
 
     @classmethod
     def get_dependency_info(cls) -> dict[str, Any]:
-        """
-        Get dependency graph information for visualization.
+        """Get dependency information from the graph structure.
 
-        Returns:
-            Dictionary with dependency graph data including:
-            - nodes: List of field names
-            - edges: List of dependency edges
-            - order: Safe initialization order
-            - dependencies: Map of field -> dependencies
-
-        Example:
-            >>> info = TrainingConfig.get_dependency_info()
-            >>> print(info["order"])  # Safe initialization order
-            ['optimizer', 'learning_rate', 'lr_multiplier']
+        Returns a dictionary with nodes, edges, order, and dependencies
+        for visualization and analysis purposes.
         """
-        if cls._dependency_graph is None:
+        if cls._root_node is None:
             return {
                 "nodes": list(cls._spaces.keys()),
                 "edges": [],
@@ -415,7 +394,23 @@ class Config(BaseModel):
                 "dependencies": {},
             }
 
-        return cls._dependency_graph.get_graph_data()
+        # Build edges from dependencies
+        edges: list[dict[str, str]] = []
+        dependencies: dict[str, list[str]] = {}
+
+        for field_name, child_node in cls._root_node.children.items():
+            deps = child_node.dependencies
+            if deps:
+                dependencies[field_name] = list(deps)
+                for dep in deps:
+                    edges.append({"from": dep, "to": field_name})
+
+        return {
+            "nodes": list(cls._root_node.children.keys()),
+            "edges": edges,
+            "order": cls._root_node.field_order,
+            "dependencies": dependencies,
+        }
 
     def __repr__(self) -> str:
         """Return a detailed string representation."""
