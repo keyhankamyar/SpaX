@@ -11,6 +11,7 @@ from pydantic import GetCoreSchemaHandler
 from pydantic_core import CoreSchema, core_schema
 
 from spax.distributions import CategoricalDistribution
+from spax.utils import is_comparable
 
 from .base import UNSET, Space, _Unset
 
@@ -115,10 +116,9 @@ class CategoricalSpace(Space[Any]):
                 value = choice
                 weight = 1.0
 
-            # Validate that value is comparable (has __eq__)
-            # or is a Config type (BaseModel subclass)
+            # Validate that value is comparable or is a Config type
             if not (
-                hasattr(value, "__eq__")
+                is_comparable(value)
                 or (isinstance(value, type) and issubclass(value, Config))
             ):
                 raise ValueError(

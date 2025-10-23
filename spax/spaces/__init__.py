@@ -27,7 +27,7 @@ from .conditions import (
     SmallerThan,
 )
 from .factory import infer_space_from_field_info
-from .numeric import Float, FloatSpace, Int, IntSpace
+from .numeric import Float, FloatSpace, Int, IntSpace, NumberSpace
 
 __all__ = [
     # Base class
@@ -38,6 +38,7 @@ __all__ = [
     "CategoricalSpace",
     "Choice",
     # Numeric spaces
+    "NumberSpace",
     "Float",
     "FloatSpace",
     "Int",

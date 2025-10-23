@@ -10,6 +10,8 @@ branches.
 from collections.abc import Callable, Iterable
 from typing import Any
 
+from spax.utils import is_comparable
+
 from .base import Condition
 
 
@@ -48,20 +50,14 @@ class EqualsTo(ObjectCondition):
         Args:
             value: The target value to compare against
         """
-        if not hasattr(value, "__eq__"):
-            raise TypeError(
-                f"Value must be comparable (have __eq__ method), "
-                f"got {type(value).__name__}"
-            )
+        if not is_comparable(value):
+            raise TypeError(f"Value must be comparable, got {type(value).__name__}")
         self.value = value
 
     def __call__(self, value: Any) -> bool:
         """Check if value equals the target."""
-        if not hasattr(value, "__eq__"):
-            raise TypeError(
-                f"Value must be comparable (have __eq__ method), "
-                f"got {type(value).__name__}"
-            )
+        if not is_comparable(value):
+            raise TypeError(f"Value must be comparable, got {type(value).__name__}")
         return value == self.value
 
     def __repr__(self) -> str:
@@ -91,20 +87,14 @@ class NotEqualsTo(ObjectCondition):
         Args:
             value: The target value to compare against
         """
-        if not hasattr(value, "__eq__"):
-            raise TypeError(
-                f"Value must be comparable (have __eq__ method), "
-                f"got {type(value).__name__}"
-            )
+        if not is_comparable(value):
+            raise TypeError(f"Value must be comparable, got {type(value).__name__}")
         self.value = value
 
     def __call__(self, value: Any) -> bool:
         """Check if value does not equal the target."""
-        if not hasattr(value, "__eq__"):
-            raise TypeError(
-                f"Value must be comparable (have __eq__ method), "
-                f"got {type(value).__name__}"
-            )
+        if not is_comparable(value):
+            raise TypeError(f"Value must be comparable, got {type(value).__name__}")
         return value != self.value
 
     def __repr__(self) -> str:
@@ -135,20 +125,14 @@ class In(ObjectCondition):
             values: Collection of allowed values
         """
         for value in values:
-            if not hasattr(value, "__eq__"):
-                raise TypeError(
-                    f"All values must be comparable (have __eq__ method), "
-                    f"got {type(value).__name__}"
-                )
+            if not is_comparable(value):
+                raise TypeError(f"Value must be comparable, got {type(value).__name__}")
         self.values = values
 
     def __call__(self, value: Any) -> bool:
         """Check if value is in the collection."""
-        if not hasattr(value, "__eq__"):
-            raise TypeError(
-                f"Value must be comparable (have __eq__ method), "
-                f"got {type(value).__name__}"
-            )
+        if not is_comparable(value):
+            raise TypeError(f"Value must be comparable, got {type(value).__name__}")
         return value in self.values
 
     def __repr__(self) -> str:
@@ -179,20 +163,14 @@ class NotIn(ObjectCondition):
             values: Collection of disallowed values
         """
         for value in values:
-            if not hasattr(value, "__eq__"):
-                raise TypeError(
-                    f"All values must be comparable (have __eq__ method), "
-                    f"got {type(value).__name__}"
-                )
+            if not is_comparable(value):
+                raise TypeError(f"Value must be comparable, got {type(value).__name__}")
         self.values = values
 
     def __call__(self, value: Any) -> bool:
         """Check if value is not in the collection."""
-        if not hasattr(value, "__eq__"):
-            raise TypeError(
-                f"Value must be comparable (have __eq__ method), "
-                f"got {type(value).__name__}"
-            )
+        if not is_comparable(value):
+            raise TypeError(f"Value must be comparable, got {type(value).__name__}")
         return value not in self.values
 
     def __repr__(self) -> str:
