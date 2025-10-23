@@ -10,12 +10,9 @@ from typing import Any, Literal, TypeAlias
 from pydantic import GetCoreSchemaHandler
 from pydantic_core import CoreSchema, core_schema
 
-from spax.distributions import LOG, UNIFORM, NumberDistribution
-
 from .base import UNSET, Space, _Unset
 
 BoundsType: TypeAlias = Literal["none", "low", "high", "both"]
-DistributionType: TypeAlias = NumberDistribution | Literal["uniform", "log"]
 
 
 class NumberSpace(Space[float]):
@@ -33,7 +30,7 @@ class NumberSpace(Space[float]):
         ge: float | None = None,
         lt: float | None = None,
         le: float | None = None,
-        distribution: DistributionType = "uniform",
+        distribution: Literal["uniform", "log"] = "uniform",
         default: float | int | _Unset = UNSET,
         description: str | None = None,
     ) -> None:
@@ -46,7 +43,7 @@ class NumberSpace(Space[float]):
             ge: Greater than or equal (inclusive lower bound).
             lt: Less than (exclusive upper bound).
             le: Less than or equal (inclusive upper bound).
-            distribution: Sampling distribution ("uniform", "log", or Distribution instance).
+            distribution: Sampling distribution ("uniform" or "log").
             description: Human-readable description of this parameter.
 
         Raises:
@@ -102,23 +99,16 @@ class NumberSpace(Space[float]):
         self.le = le
 
         # Handle distribution specification
-        if isinstance(distribution, str):
-            if distribution == "uniform":
-                self.distribution = UNIFORM
-            elif distribution == "log":
-                self.distribution = LOG
-            else:
-                raise ValueError(
-                    f"Unknown distribution string '{distribution}'. "
-                    "Expected 'uniform' or 'log'."
-                )
-        elif isinstance(distribution, NumberDistribution):
-            self.distribution = distribution
-        else:
-            raise ValueError(
-                f"distribution must be a NumberDistribution or string, "
-                f"got {type(distribution).__name__}"
+        if not isinstance(distribution, str):
+            raise TypeError(
+                f"Expected distribution to be string, got "
+                f"'{distribution}' which is {type(distribution).__name__}"
             )
+        if distribution not in ["uniform", "log"]:
+            raise TypeError(
+                f"Unknown distribution '{distribution}'. Expected 'uniform' or 'log'."
+            )
+        self.distribution = distribution
 
         # Call parent __init__ with default and description
         super().__init__(default=default, description=description)
@@ -156,21 +146,6 @@ class NumberSpace(Space[float]):
         else:
             if value >= self.high:
                 raise ValueError(f"{field}: Value {value} must be < {self.high}")
-
-    def sample(self) -> float:
-        """
-        Sample a random value from this numeric space.
-
-        Returns:
-            A float sampled according to the distribution.
-        """
-        low = self.low
-        if not self.low_inclusive:
-            low += 1e-8
-        high = self.high
-        if not self.high_inclusive:
-            high -= 1e-8
-        return self.distribution.sample(low, high)
 
     def __repr__(self) -> str:
         """Return a detailed string representation."""
@@ -261,7 +236,7 @@ class IntSpace(NumberSpace):
         ge: int | None = None,
         lt: int | None = None,
         le: int | None = None,
-        distribution: DistributionType = "uniform",
+        distribution: Literal["uniform", "log"] = "uniform",
         default: int | _Unset = UNSET,
         description: str | None = None,
     ) -> None:
@@ -274,7 +249,7 @@ class IntSpace(NumberSpace):
             ge: Greater than or equal (inclusive lower bound, must be integer).
             lt: Less than (exclusive upper bound, must be integer).
             le: Less than or equal (inclusive upper bound, must be integer).
-            distribution: Sampling distribution.
+            distribution: Sampling distribution ("uniform" or "log").
             description: Human-readable description of this parameter.
 
         Raises:
@@ -337,22 +312,6 @@ class IntSpace(NumberSpace):
         self._check_bounds(float(int_value))
         return int_value
 
-    def sample(self) -> int:
-        """
-        Sample a random integer from this space.
-
-        Returns:
-            An integer sampled according to the distribution and then rounded.
-        """
-        low = self.low
-        if not self.low_inclusive:
-            low += 1
-        high = self.high
-        if not self.high_inclusive:
-            high -= 1
-        value = self.distribution.sample(low, high)
-        return int(round(value))
-
     @classmethod
     def __get_pydantic_core_schema__(
         cls, source_type: Any, handler: GetCoreSchemaHandler
@@ -369,7 +328,7 @@ def Float(
     ge: float | None = None,
     lt: float | None = None,
     le: float | None = None,
-    distribution: DistributionType = "uniform",
+    distribution: Literal["uniform", "log"] = "uniform",
     default: float | _Unset = UNSET,
     description: str | None = None,
 ) -> Any:
@@ -380,12 +339,12 @@ def Float(
         learning_rate: float = Float(ge=0.001, lt=0.1)
 
     Args:
-        default: Default value to use when not specified.
         gt: Greater than (exclusive lower bound).
         ge: Greater than or equal (inclusive lower bound).
         lt: Less than (exclusive upper bound).
         le: Less than or equal (inclusive upper bound).
-        distribution: "uniform", "log", or a Distribution instance.
+        distribution: "uniform" or "log".
+        default: Default value to use when not specified.
         description: Human-readable description of this parameter.
 
     Returns:
@@ -408,7 +367,7 @@ def Int(
     ge: int | None = None,
     lt: int | None = None,
     le: int | None = None,
-    distribution: DistributionType = "uniform",
+    distribution: Literal["uniform", "log"] = "uniform",
     default: int | _Unset = UNSET,
     description: str | None = None,
 ) -> Any:
@@ -423,7 +382,7 @@ def Int(
         ge: Greater than or equal (inclusive lower bound).
         lt: Less than (exclusive upper bound).
         le: Less than or equal (inclusive upper bound).
-        distribution: "uniform", "log", or a Distribution instance.
+        distribution: "uniform" or "log".
         default: Default value to use when not specified.
         description: Human-readable description of this parameter.
 

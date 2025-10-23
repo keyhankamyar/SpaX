@@ -141,45 +141,6 @@ class TestCategoricalSpace:
 
         assert space.validate("only_option") == "only_option"
 
-        # Sampling should always return the only choice
-        samples = [space.sample() for _ in range(10)]
-        assert all(s == "only_option" for s in samples)
-
-    def test_sampling_equal_weights(self):
-        """Test sampling with equal weights."""
-        space = CategoricalSpace(["a", "b", "c", "d"])
-
-        samples = [space.sample() for _ in range(200)]
-
-        # All choices should appear
-        assert "a" in samples
-        assert "b" in samples
-        assert "c" in samples
-        assert "d" in samples
-
-        # With equal weights, distribution should be roughly equal
-        # (allowing for randomness)
-        counts = {choice: samples.count(choice) for choice in ["a", "b", "c", "d"]}
-        # Each should appear roughly 50 times (200/4)
-        # Allow generous margin for randomness
-        for count in counts.values():
-            assert 20 < count < 80
-
-    def test_sampling_respects_weights(self):
-        """Test that sampling respects weight distribution."""
-        space = CategoricalSpace(
-            [Choice("rare", weight=1.0), Choice("common", weight=99.0)]
-        )
-
-        samples = [space.sample() for _ in range(1000)]
-
-        common_count = samples.count("common")
-        rare_count = samples.count("rare")
-
-        # "common" should appear much more frequently
-        assert common_count > 900
-        assert rare_count < 100
-
     def test_default_value(self):
         """Test default value handling."""
         space = CategoricalSpace(["a", "b", "c"], default="b")
@@ -312,24 +273,6 @@ class TestCategoricalWithConfigTypes:
         assert space.validate("string_option") == "string_option"
         assert space.validate(None) is None
 
-    def test_sampling_config_types(self):
-        """Test sampling produces valid instances when Config types are choices."""
-
-        class ConfigA(Config):
-            value: int = 1
-
-        class ConfigB(Config):
-            value: int = 2
-
-        # Note: CategoricalSpace stores the type itself, not instances
-        # So sampling will return the type, not an instance
-        space = CategoricalSpace([ConfigA, ConfigB])
-
-        samples = [space.sample() for _ in range(10)]
-
-        # All samples should be one of the Config types
-        assert all(s in [ConfigA, ConfigB] for s in samples)
-
 
 class TestCategoricalFactory:
     """Test Categorical() factory function."""
@@ -361,22 +304,6 @@ class TestCategoricalEdgeCases:
         # Should validate any choice
         assert space.validate(500) == 500
         assert space.validate(999) == 999
-
-        # Sampling should work
-        samples = [space.sample() for _ in range(100)]
-        assert all(s in choices for s in samples)
-
-    def test_extreme_weight_differences(self):
-        """Test with extreme weight differences."""
-        space = CategoricalSpace(
-            [Choice("very_rare", weight=1.0), Choice("very_common", weight=1000.0)]
-        )
-
-        samples = [space.sample() for _ in range(1000)]
-
-        # Very common should dominate
-        very_common_count = samples.count("very_common")
-        assert very_common_count > 980
 
     def test_all_same_weights_no_probs_in_repr(self):
         """Test that probs are not shown in repr when all weights are equal."""

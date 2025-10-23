@@ -10,7 +10,6 @@ from typing import Any
 from pydantic import GetCoreSchemaHandler
 from pydantic_core import CoreSchema, core_schema
 
-from spax.distributions import CategoricalDistribution
 from spax.utils import is_comparable
 
 from .base import UNSET, Space, _Unset
@@ -134,8 +133,6 @@ class CategoricalSpace(Space[Any]):
             raise ValueError("Total weight cannot be zero")
         self.probs = [w / total_weight for w in self.weights]
 
-        self.distribution = CategoricalDistribution()
-
         # Call parent __init__ with default and description
         super().__init__(default=default, description=description)
 
@@ -177,15 +174,6 @@ class CategoricalSpace(Space[Any]):
         raise ValueError(
             f"{field}: Value {value!r} not in allowed choices {self.choices}"
         )
-
-    def sample(self) -> Any:
-        """
-        Sample a random choice based on weights.
-
-        Returns:
-            A randomly selected choice from the categorical distribution.
-        """
-        return self.distribution.sample(choices=self.choices, weights=self.probs)
 
     @classmethod
     def __get_pydantic_core_schema__(

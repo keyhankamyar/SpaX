@@ -33,15 +33,6 @@ Example:
 """
 
 from .config import Config
-from .distributions import (
-    LOG,
-    UNIFORM,
-    CategoricalDistribution,
-    Distribution,
-    LogDistribution,
-    NumberDistribution,
-    UniformDistribution,
-)
 from .spaces import (
     UNSET,
     And,
@@ -109,14 +100,6 @@ __all__ = [
     "Or",
     "Not",
     "Lambda",
-    # Distributions
-    "Distribution",
-    "NumberDistribution",
-    "UniformDistribution",
-    "LogDistribution",
-    "CategoricalDistribution",
-    "UNIFORM",
-    "LOG",
     # Version
     "__version__",
 ]

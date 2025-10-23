@@ -98,16 +98,6 @@ class Space(ABC, Generic[T]):
         """
         pass
 
-    @abstractmethod
-    def sample(self) -> T:
-        """
-        Sample a random valid value from this space.
-
-        Returns:
-            A randomly sampled value that satisfies this space's constraints.
-        """
-        pass
-
     @classmethod
     @abstractmethod
     def __get_pydantic_core_schema__(

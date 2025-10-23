@@ -250,46 +250,6 @@ class TestConditionalSampling:
         ):
             space.sample()
 
-    def test_sampling_true_branch(self):
-        """Test sampling from true branch."""
-
-        class MockConfig:
-            use_large = True
-
-        space = ConditionalSpace(
-            condition=FieldCondition("use_large", EqualsTo(True)),
-            true=IntSpace(ge=100, le=200),
-            false=IntSpace(ge=0, le=10),
-        )
-        space.field_name = "value"
-
-        config = MockConfig()
-
-        samples = [space.sample_with_config(config) for _ in range(50)]
-
-        # All should be from true branch (100-200)
-        assert all(100 <= s <= 200 for s in samples)
-
-    def test_sampling_false_branch(self):
-        """Test sampling from false branch."""
-
-        class MockConfig:
-            use_large = False
-
-        space = ConditionalSpace(
-            condition=FieldCondition("use_large", EqualsTo(True)),
-            true=IntSpace(ge=100, le=200),
-            false=IntSpace(ge=0, le=10),
-        )
-        space.field_name = "value"
-
-        config = MockConfig()
-
-        samples = [space.sample_with_config(config) for _ in range(50)]
-
-        # All should be from false branch (0-10)
-        assert all(0 <= s <= 10 for s in samples)
-
     def test_sampling_fixed_value_branch(self):
         """Test sampling when branch is a fixed value."""
 

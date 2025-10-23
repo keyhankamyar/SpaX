@@ -60,10 +60,10 @@ def _infer_numeric_space(
 
     # Create the appropriate space
     if annotation is int:
-        return Int(default=default, gt=gt, ge=ge, lt=lt, le=le, description=description)
+        return Int(gt=gt, ge=ge, lt=lt, le=le, default=default, description=description)
     else:  # float
         return Float(
-            default=default, gt=gt, ge=ge, lt=lt, le=le, description=description
+            gt=gt, ge=ge, lt=lt, le=le, default=default, description=description
         )
 
 

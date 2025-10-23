@@ -2,7 +2,6 @@
 
 import pytest
 
-from spax.distributions import UNIFORM
 from spax.spaces import UNSET, Float, FloatSpace, Int, IntSpace
 
 
@@ -139,39 +138,6 @@ class TestFloatSpace:
         assert space.validate(1e5) == 1e5
         assert space.validate(1e10) == 1e10
 
-    def test_uniform_distribution(self):
-        """Test uniform distribution sampling."""
-        space = FloatSpace(ge=0.0, le=10.0, distribution="uniform")
-
-        samples = [space.sample() for _ in range(100)]
-
-        # All samples in range
-        assert all(0.0 <= s <= 10.0 for s in samples)
-
-        # Check it's actually sampling (not always same value)
-        assert len(set(samples)) > 10
-
-    def test_log_distribution(self):
-        """Test log distribution sampling."""
-        space = FloatSpace(ge=1.0, le=1000.0, distribution="log")
-
-        samples = [space.sample() for _ in range(100)]
-
-        # All samples in range
-        assert all(1.0 <= s <= 1000.0 for s in samples)
-
-        # Log distribution should favor smaller values
-        below_100 = sum(1 for s in samples if s < 100)
-        above_100 = sum(1 for s in samples if s >= 100)
-        assert below_100 > above_100
-
-    def test_custom_distribution_object(self):
-        """Test custom distribution object."""
-        space = FloatSpace(ge=0.0, le=10.0, distribution=UNIFORM)
-
-        samples = [space.sample() for _ in range(50)]
-        assert all(0.0 <= s <= 10.0 for s in samples)
-
     def test_default_value(self):
         """Test default value handling."""
         space = FloatSpace(ge=0.0, le=10.0, default=5.0)
@@ -234,12 +200,12 @@ class TestFloatSpace:
 
     def test_invalid_distribution_string_error(self):
         """Test error with invalid distribution string."""
-        with pytest.raises(ValueError, match="Unknown distribution"):
+        with pytest.raises(TypeError, match="Unknown distribution"):
             FloatSpace(ge=0.0, le=10.0, distribution="invalid")
 
     def test_invalid_distribution_type_error(self):
         """Test error with invalid distribution type."""
-        with pytest.raises(ValueError, match="NumberDistribution or string"):
+        with pytest.raises(TypeError, match="Expected distribution to be string"):
             FloatSpace(ge=0.0, le=10.0, distribution=123)
 
     def test_repr(self):
@@ -358,45 +324,6 @@ class TestIntSpace:
         with pytest.raises(ValueError, match="must be <"):
             space.validate(10)
 
-    def test_sampling_returns_integers(self):
-        """Test that sampling returns proper integers."""
-        space = IntSpace(ge=0, le=100)
-
-        samples = [space.sample() for _ in range(50)]
-
-        # All are integers
-        assert all(isinstance(s, int) for s in samples)
-
-        # All in range
-        assert all(0 <= s <= 100 for s in samples)
-
-    def test_sampling_with_exclusive_bounds(self):
-        """Test sampling with exclusive bounds."""
-        space = IntSpace(gt=0, lt=10)
-
-        samples = [space.sample() for _ in range(100)]
-
-        # All in valid range (1-9)
-        assert all(1 <= s <= 9 for s in samples)
-
-        # Should not include boundaries
-        assert 0 not in samples
-        assert 10 not in samples
-
-    def test_small_int_range(self):
-        """Test small integer range."""
-        space = IntSpace(ge=5, le=7)
-
-        samples = [space.sample() for _ in range(50)]
-
-        # All in range
-        assert all(s in [5, 6, 7] for s in samples)
-
-        # All values should appear
-        assert 5 in samples
-        assert 6 in samples
-        assert 7 in samples
-
     def test_negative_int_range(self):
         """Test negative integer range."""
         space = IntSpace(ge=-10, le=-1)
@@ -408,21 +335,6 @@ class TestIntSpace:
 
         with pytest.raises(ValueError):
             space.validate(0)
-
-    def test_log_distribution_with_integers(self):
-        """Test log distribution with integer space."""
-        space = IntSpace(ge=1, le=1000, distribution="log")
-
-        samples = [space.sample() for _ in range(100)]
-
-        # All are integers in range
-        assert all(isinstance(s, int) for s in samples)
-        assert all(1 <= s <= 1000 for s in samples)
-
-        # Log distribution bias
-        below_100 = sum(1 for s in samples if s < 100)
-        above_100 = sum(1 for s in samples if s >= 100)
-        assert below_100 > above_100
 
     def test_repr(self):
         """Test string representation."""
@@ -472,16 +384,3 @@ class TestIntFactory:
         assert space.high == 10
         assert space.default == 5
         assert space.description == "Test"
-
-
-class TestNumericSpaceEdgeCases:
-    """Test edge cases for numeric spaces."""
-
-    def test_multiple_samples_different(self):
-        """Test that multiple samples produce different values."""
-        space = FloatSpace(ge=0.0, le=100.0)
-
-        samples = [space.sample() for _ in range(100)]
-
-        # Should have many unique values
-        assert len(set(samples)) > 50
