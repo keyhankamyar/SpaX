@@ -1,12 +1,12 @@
 """Object conditions for evaluating single values.
 
 This module provides conditions that operate on single values, such as
-equality checks, membership tests, comparisons, and logical combinations.
+equality checks, membership tests, and comparisons.
 These are used in ConditionalSpace to make parameters conditional on
 the value of another parameter.
 """
 
-from collections.abc import Callable, Iterable
+from collections.abc import Callable
 from typing import Any
 
 from spax.utils import is_comparable
@@ -22,8 +22,10 @@ class ObjectCondition(Condition):
     to evaluate specific fields of a config.
 
     Examples:
-        >>> FieldCondition("optimizer", EqualsTo("adam"))
-        >>> FieldCondition("learning_rate", LargerThan(0.001))
+        >>> import spax as sp
+        >>>
+        >>> sp.FieldCondition("optimizer", sp.EqualsTo("adam"))
+        >>> sp.FieldCondition("learning_rate", sp.LargerThan(0.001))
     """
 
     pass
@@ -435,187 +437,6 @@ class IsInstance(ObjectCondition):
 
     def __repr__(self) -> str:
         return f"IsInstance({self._class_or_tuple!r})"
-
-
-class And(ObjectCondition):
-    """Condition that requires all sub-conditions to be True.
-
-    Attributes:
-        conditions: List of conditions that must all be satisfied.
-
-    Examples:
-        >>> import spax as sp
-        >>>
-        >>> cond = sp.And([sp.LargerThan(0), sp.SmallerThan(1)])
-        >>> cond(0.5)  # True (0 < 0.5 < 1)
-        >>> cond(1.5)  # False (not < 1)
-    """
-
-    def __init__(self, conditions: Iterable[Condition]) -> None:
-        """Initialize an And condition.
-
-        Args:
-            conditions: Iterable of Condition objects that must all be True.
-
-        Raises:
-            TypeError: If conditions is not iterable or contains non-Conditions.
-            ValueError: If no conditions are provided.
-        """
-        # Check if iterable
-        try:
-            conditions_list = list(conditions)
-        except TypeError:
-            raise TypeError(
-                f"conditions must be iterable, got {type(conditions).__name__}"
-            ) from None
-
-        if not conditions_list:
-            raise ValueError("And requires at least one condition")
-
-        # Validate all are Condition instances
-        for i, cond in enumerate(conditions_list):
-            if not isinstance(cond, Condition):
-                raise TypeError(
-                    f"All conditions must be Condition instances, "
-                    f"got {type(cond).__name__} at index {i}"
-                )
-
-        self._conditions = conditions_list
-
-    @property
-    def conditions(self) -> list[Condition]:
-        """List of conditions that must all be satisfied."""
-        return self._conditions.copy()
-
-    def __call__(self, value: Any) -> bool:
-        """Check if all sub-conditions are satisfied.
-
-        Args:
-            value: The value to check against all conditions.
-
-        Returns:
-            True if all conditions are True, False otherwise.
-        """
-        return all(condition(value) for condition in self._conditions)
-
-    def __repr__(self) -> str:
-        return f"And({self._conditions!r})"
-
-
-class Or(ObjectCondition):
-    """Condition that requires at least one sub-condition to be True.
-
-    Attributes:
-        conditions: List of conditions where at least one must be satisfied.
-
-    Examples:
-        >>> import spax as sp
-        >>>
-        >>> cond = sp.Or([sp.EqualsTo("adam"), sp.EqualsTo("sgd")])
-        >>> cond("adam")     # True
-        >>> cond("rmsprop")  # False
-    """
-
-    def __init__(self, conditions: Iterable[Condition]) -> None:
-        """Initialize an Or condition.
-
-        Args:
-            conditions: Iterable of Condition objects where at least one must be True.
-
-        Raises:
-            TypeError: If conditions is not iterable or contains non-Conditions.
-            ValueError: If no conditions are provided.
-        """
-        # Check if iterable
-        try:
-            conditions_list = list(conditions)
-        except TypeError:
-            raise TypeError(
-                f"conditions must be iterable, got {type(conditions).__name__}"
-            ) from None
-
-        if not conditions_list:
-            raise ValueError("Or requires at least one condition")
-
-        # Validate all are Condition instances
-        for i, cond in enumerate(conditions_list):
-            if not isinstance(cond, Condition):
-                raise TypeError(
-                    f"All conditions must be Condition instances, "
-                    f"got {type(cond).__name__} at index {i}"
-                )
-
-        self._conditions = conditions_list
-
-    @property
-    def conditions(self) -> list[Condition]:
-        """List of conditions where at least one must be satisfied."""
-        return self._conditions.copy()
-
-    def __call__(self, value: Any) -> bool:
-        """Check if at least one sub-condition is satisfied.
-
-        Args:
-            value: The value to check against all conditions.
-
-        Returns:
-            True if any condition is True, False otherwise.
-        """
-        return any(condition(value) for condition in self._conditions)
-
-    def __repr__(self) -> str:
-        return f"Or({self._conditions!r})"
-
-
-class Not(ObjectCondition):
-    """Condition that negates another condition.
-
-    Attributes:
-        condition: The condition to negate.
-
-    Examples:
-        >>> import spax as sp
-        >>>
-        >>> cond = sp.Not(sp.EqualsTo("adam"))
-        >>> cond("sgd")   # True
-        >>> cond("adam")  # False
-    """
-
-    def __init__(self, condition: Condition) -> None:
-        """Initialize a Not condition.
-
-        Args:
-            condition: The condition to negate.
-
-        Raises:
-            TypeError: If condition is not a Condition instance.
-        """
-        if not isinstance(condition, Condition):
-            raise TypeError(
-                f"condition must be a Condition instance, "
-                f"got {type(condition).__name__}"
-            )
-        self._condition = condition
-
-    @property
-    def condition(self) -> Condition:
-        """The condition to negate."""
-        return self._condition
-
-    def __call__(self, value: Any) -> bool:
-        """Check if the sub-condition is False.
-
-        Args:
-            value: The value to check.
-
-        Returns:
-            True if the sub-condition is False, False otherwise.
-        """
-        return not self._condition(value)
-
-    def __repr__(self) -> str:
-        return f"Not({self._condition!r})"
-
 
 class Lambda(ObjectCondition):
     """Condition defined by a custom function.

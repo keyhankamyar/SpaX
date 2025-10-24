@@ -1,8 +1,61 @@
-"""Conditional search spaces for parameter dependencies.
+"""Conditional spaces for parameter dependencies.
 
-This module provides ConditionalSpace for defining parameters whose possible
-values depend on the values of other parameters. This enables complex search
-spaces where different configurations have different parameter sets.
+This module provides ConditionalSpace, which represents parameters whose
+possible values depend on the values of other parameters in the configuration.
+
+Conditional spaces have:
+- A condition (must be an AttributeCondition at top level)
+- A true branch (active when condition evaluates to True)
+- A false branch (active when condition evaluates to False)
+
+Condition Requirements:
+----------------------
+The top-level condition must be an AttributeCondition to enable proper
+dependency tracking and ordered sampling. This includes:
+- FieldCondition
+- MultiFieldLambdaCondition
+- Composite conditions (And, Or, Not) containing AttributeConditions
+
+ObjectConditions (EqualsTo, In, etc.) can only be used INSIDE AttributeConditions,
+not as the top-level condition.
+
+Valid Top-Level Conditions:
+    ✓ sp.FieldCondition("use_dropout", sp.EqualsTo(True))
+    ✓ sp.And([
+          sp.FieldCondition("use_l2", sp.EqualsTo(True)),
+          sp.FieldCondition("use_dropout", sp.EqualsTo(True))
+      ])
+    ✓ sp.Not(sp.FieldCondition("use_batch_norm", sp.EqualsTo(True)))
+
+Invalid Top-Level Conditions:
+    ✗ sp.EqualsTo(True)  # No field dependency
+    ✗ sp.In([1, 2, 3])   # No field dependency
+    ✗ sp.And([sp.EqualsTo(True), sp.EqualsTo(False)])  # ObjectConditions in composite
+
+Examples:
+    >>> import spax as sp
+    >>>
+    >>> # Basic conditional: dropout rate depends on use_dropout
+    >>> class MyConfig(sp.Config):
+    ...     use_dropout: bool = sp.Categorical([True, False])
+    ...     dropout_rate: float = sp.Conditional(
+    ...         sp.FieldCondition("use_dropout", sp.EqualsTo(True)),
+    ...         true=sp.Float(gt=0.0, lt=0.5),
+    ...         false=0.0
+    ...     )
+    >>>
+    >>> # Composite condition: parameter depends on multiple fields
+    >>> class MyConfig(sp.Config):
+    ...     use_l2: bool = sp.Categorical([True, False])
+    ...     use_dropout: bool = sp.Categorical([True, False])
+    ...     strong_reg: bool = sp.Conditional(
+    ...         sp.And([
+    ...             sp.FieldCondition("use_l2", sp.EqualsTo(True)),
+    ...             sp.FieldCondition("use_dropout", sp.EqualsTo(True))
+    ...         ]),
+    ...         true=sp.Categorical([True, False]),
+    ...         false=False
+    ...     )
 """
 
 from typing import Any
@@ -23,8 +76,10 @@ class ConditionalSpace(Space[Any]):
     (for sampling) or a fixed value.
 
     ConditionalSpaces require AttributeCondition at the top level to enable
-    proper dependency tracking and ordered sampling/validation. The condition
-    can check one field (FieldCondition) or multiple fields (MultiFieldLambdaCondition).
+    proper dependency tracking and ordered sampling/validation. This includes:
+    - FieldCondition (single field dependency)
+    - MultiFieldLambdaCondition (multiple field dependencies)
+    - Composite conditions: And, Or, Not (with AttributeCondition children)
 
     Attributes:
         condition: The AttributeCondition that determines which branch is active.
@@ -45,15 +100,27 @@ class ConditionalSpace(Space[Any]):
         ...         false=0.0
         ...     )
         >>>
-        >>> # Multi-field conditional
+        >>> # Composite condition (And)
         >>> class TrainingConfig(sp.Config):
+        ...     use_l2: bool
+        ...     use_dropout: bool
+        ...     strong_reg: bool = sp.Conditional(
+        ...         sp.And([
+        ...             sp.FieldCondition("use_l2", sp.EqualsTo(True)),
+        ...             sp.FieldCondition("use_dropout", sp.EqualsTo(True))
+        ...         ]),
+        ...         true=sp.Categorical([True, False]),
+        ...         false=False
+        ...     )
+        >>>
+        >>> # Multi-field conditional
+        >>> class OptConfig(sp.Config):
         ...     batch_size: int = sp.Int(ge=1, le=128)
-        ...     grad_accumulation_steps: int = sp.Int(ge=1, le=32)
+        ...     grad_accum: int = sp.Int(ge=1, le=32)
         ...     optimizer: str = sp.Conditional(
         ...         sp.MultiFieldLambdaCondition(
-        ...             ["batch_size", "grad_accumulation_steps"],
-        ...             lambda batch_size, grad_accumulation_steps:
-        ...                 batch_size * grad_accumulation_steps > 64
+        ...             ["batch_size", "grad_accum"],
+        ...             lambda bs, ga: bs * ga > 64
         ...         ),
         ...         true="adam",
         ...         false="sgd"
@@ -81,21 +148,25 @@ class ConditionalSpace(Space[Any]):
 
         Args:
             condition: AttributeCondition that determines which branch is active.
-                Must be FieldCondition or MultiFieldLambdaCondition for proper
-                dependency tracking.
+                Must be FieldCondition, MultiFieldLambdaCondition, or a composite
+                condition (And/Or/Not) containing only AttributeConditions for
+                proper dependency tracking.
             true: Space or fixed value to use when condition is True.
             false: Space or fixed value to use when condition is False.
             description: Human-readable description.
 
         Raises:
-            TypeError: If condition is not an AttributeCondition.
+            TypeError: If condition is not an AttributeCondition at top level,
+                or if composite conditions contain ObjectConditions.
         """
         if not isinstance(condition, AttributeCondition):
             raise TypeError(
-                f"ConditionalSpace requires an AttributeCondition "
-                f"(FieldCondition or MultiFieldLambdaCondition) at the top level, "
-                f"got {type(condition).__name__}. AttributeConditions are required "
-                f"for proper dependency tracking and ordered sampling."
+                f"ConditionalSpace requires an AttributeCondition (FieldCondition, "
+                f"MultiFieldLambdaCondition, or composite conditions like And/Or/Not "
+                f"with AttributeCondition children) at the top level, got {type(condition).__name__}. "
+                f"AttributeConditions are required for proper dependency tracking and ordered sampling. "
+                f"Hint: ObjectConditions (EqualsTo, In, etc.) can only be used INSIDE "
+                f"AttributeConditions, not as the top-level condition."
             )
 
         self._condition = condition

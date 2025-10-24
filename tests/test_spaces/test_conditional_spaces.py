@@ -24,9 +24,9 @@ class TestConditionalSpaceBasic:
         # ObjectCondition should fail
         with pytest.raises(TypeError, match="AttributeCondition"):
             ConditionalSpace(
-                condition=EqualsTo(
+                condition=EqualsTo(  # This is ObjectCondition, not AttributeCondition
                     5
-                ),  # This is ObjectCondition, not AttributeCondition
+                ),
                 true=FloatSpace(ge=0.0, le=10.0),
                 false=FloatSpace(ge=10.0, le=20.0),
             )
