@@ -719,9 +719,19 @@ class ConditionalNode(SpaceNode):
             Sampled value from the active branch.
         """
         if self._space.condition(config):
-            return self._true_node.sample(sampler, prefix + "::true_branch")
+            if isinstance(self._true_node, ConditionalNode):
+                return self._true_node.sample_with_config(
+                    sampler, prefix + "::true_branch", config
+                )
+            else:
+                return self._true_node.sample(sampler, prefix + "::true_branch")
         else:
-            return self._false_node.sample(sampler, prefix + "::false_branch")
+            if isinstance(self._false_node, ConditionalNode):
+                return self._false_node.sample_with_config(
+                    sampler, prefix + "::false_branch", config
+                )
+            else:
+                return self._false_node.sample(sampler, prefix + "::false_branch")
 
     def get_signature(self) -> str:
         """Get signature including condition and both branch signatures.
