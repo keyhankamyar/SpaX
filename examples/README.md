@@ -36,11 +36,6 @@ The examples are organized from basic to advanced usage, covering:
 11. **[10_optuna_integration.py](10_optuna_integration.py)** - Full Optuna HPO integration example
 12. **[11_serialization.py](11_serialization.py)** - JSON, YAML, TOML serialization
 
-### Real-World Examples
-13. **[12_resnet_config.py](12_resnet_config.py)** - ResNet architecture configuration
-14. **[13_transformer_config.py](13_transformer_config.py)** - Transformer model configuration
-15. **[14_training_config.py](14_training_config.py)** - Complete ML training pipeline configuration
-
 ## Key Highlight: Minimal Overhead
 
 **SpaX is designed to work seamlessly with existing Pydantic code.** Simply swap `BaseModel` with `Config` and optionally use SpaX spaces for searchable parameters. You can mix and match:
@@ -73,9 +68,7 @@ pip install tomli-w  # For TOML examples
 
 **Beginners:** Continue with examples 1-4 to understand basic usage.
 
-**Intermediate:** Move to examples 5-10 to learn advanced features.
-
-**Advanced:** Study examples 11-15 for real-world applications and integrations.
+**Intermediate-Advanced:** Move to examples 5-10 to learn advanced features.
 
 ## Tips
 
