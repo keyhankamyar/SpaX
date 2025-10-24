@@ -1,14 +1,13 @@
-"""
-Condition system for SpaX configuration spaces.
+"""Conditions for conditional search spaces.
 
-Conditions are predicates used to control ConditionalSpace behavior. They are
-divided into two categories:
+This module provides condition classes for making parameters conditional on
+other parameters. There are two main types:
 
-- AttributeConditions: Depend on specific config fields and can be used at the
-  top level of ConditionalSpace (FieldCondition, MultiFieldLambda)
+- AttributeConditions: Evaluate fields of config objects (FieldCondition, MultiFieldLambdaCondition)
+- ObjectConditions: Evaluate single values (EqualsTo, In, LargerThan, And, Or, Not, etc.)
 
-- ObjectConditions: Evaluate values/objects directly and can only be used within
-  FieldCondition or as nested conditions (EqualsTo, LargerThan, And, Or, etc.)
+AttributeConditions are used at the top level of ConditionalSpace, while
+ObjectConditions are typically wrapped in FieldCondition to check specific fields.
 """
 
 from .attribute_conditions import (
@@ -40,16 +39,21 @@ __all__ = [
     # Attribute conditions
     "FieldCondition",
     "MultiFieldLambdaCondition",
-    # Object conditions
+    # Object conditions - Equality
     "EqualsTo",
     "NotEqualsTo",
+    # Object conditions - Membership
     "In",
     "NotIn",
+    # Object conditions - Comparison
     "SmallerThan",
     "LargerThan",
+    # Object conditions - Type checking
     "IsInstance",
+    # Object conditions - Logical
     "And",
     "Or",
     "Not",
+    # Object conditions - Custom
     "Lambda",
 ]

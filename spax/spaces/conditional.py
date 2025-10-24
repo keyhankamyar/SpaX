@@ -1,9 +1,8 @@
-"""
-Conditional spaces that activate different branches based on configuration state.
+"""Conditional search spaces for parameter dependencies.
 
-ConditionalSpace allows defining parameters whose type, range, or value depends
-on other configuration fields. The top-level condition must be an AttributeCondition
-to enable proper dependency tracking and ordered sampling.
+This module provides ConditionalSpace for defining parameters whose possible
+values depend on the values of other parameters. This enables complex search
+spaces where different configurations have different parameter sets.
 """
 
 from typing import Any
@@ -16,12 +15,23 @@ from .conditions import AttributeCondition
 
 
 class ConditionalSpace(Space[Any]):
-    """
-    A space that conditionally activates one of two branches based on config state.
+    """Search space with branches that depend on other parameter values.
 
-    The condition must be an AttributeCondition (FieldCondition or MultiFieldLambda)
-    at the top level to ensure proper dependency tracking. The branches can contain
-    any Space types, fixed values, or nested ConditionalSpaces.
+    ConditionalSpace allows parameters to be conditional on the values of
+    other parameters. The condition evaluates to True or False, determining
+    which branch (true or false) is active. Each branch can be a Space
+    (for sampling) or a fixed value.
+
+    ConditionalSpaces require AttributeCondition at the top level to enable
+    proper dependency tracking and ordered sampling/validation. The condition
+    can check one field (FieldCondition) or multiple fields (MultiFieldLambdaCondition).
+
+    Attributes:
+        condition: The AttributeCondition that determines which branch is active.
+        true_branch: The space or value used when condition is True.
+        false_branch: The space or value used when condition is False.
+        true_is_space: Whether true_branch is a Space (vs. fixed value).
+        false_is_space: Whether false_branch is a Space (vs. fixed value).
 
     Examples:
         >>> import spax as sp
@@ -31,7 +41,7 @@ class ConditionalSpace(Space[Any]):
         ...     use_dropout: bool
         ...     dropout_rate: float = sp.Conditional(
         ...         sp.FieldCondition("use_dropout", sp.EqualsTo(True)),
-        ...         true=sp.Float(gt=0, lt=0.5),
+        ...         true=sp.Float(gt=0.0, lt=0.5),
         ...         false=0.0
         ...     )
         >>>
@@ -40,7 +50,7 @@ class ConditionalSpace(Space[Any]):
         ...     batch_size: int = sp.Int(ge=1, le=128)
         ...     grad_accumulation_steps: int = sp.Int(ge=1, le=32)
         ...     optimizer: str = sp.Conditional(
-        ...         sp.MultiFieldLambda(
+        ...         sp.MultiFieldLambdaCondition(
         ...             ["batch_size", "grad_accumulation_steps"],
         ...             lambda batch_size, grad_accumulation_steps:
         ...                 batch_size * grad_accumulation_steps > 64
@@ -49,16 +59,12 @@ class ConditionalSpace(Space[Any]):
         ...         false="sgd"
         ...     )
         >>>
-        >>> # Nested conditionals with different space types
+        >>> # Nested conditionals
         >>> class ModelConfig(sp.Config):
-        ...     model_type: str = sp.Categorical(["transformer", "cnn", "rnn"])
+        ...     model_type: str = sp.Categorical(["small", "large"])
         ...     hidden_size: int = sp.Conditional(
-        ...         sp.FieldCondition("model_type", sp.EqualsTo("transformer")),
-        ...         true=sp.Conditional(
-        ...             sp.FieldCondition("model_type", sp.EqualsTo("transformer")),
-        ...             true=sp.Int(ge=512, le=2048),
-        ...             false=sp.Int(ge=128, le=512)
-        ...         ),
+        ...         sp.FieldCondition("model_type", sp.EqualsTo("large")),
+        ...         true=sp.Int(ge=512, le=2048),
         ...         false=sp.Int(ge=64, le=256)
         ...     )
     """
@@ -71,104 +77,132 @@ class ConditionalSpace(Space[Any]):
         false: Space[Any] | Any,
         description: str | None = None,
     ) -> None:
-        """
-        Initialize a conditional space.
+        """Initialize a ConditionalSpace.
 
         Args:
-            condition: AttributeCondition that determines which branch to activate.
-                Must be FieldCondition or MultiFieldLambda at the top level.
-            true: Space or fixed value used when condition evaluates to True
-            false: Space or fixed value used when condition evaluates to False
-            description: Description of this conditional parameter
+            condition: AttributeCondition that determines which branch is active.
+                Must be FieldCondition or MultiFieldLambdaCondition for proper
+                dependency tracking.
+            true: Space or fixed value to use when condition is True.
+            false: Space or fixed value to use when condition is False.
+            description: Human-readable description.
 
         Raises:
-            TypeError: If condition is not an AttributeCondition
+            TypeError: If condition is not an AttributeCondition.
         """
         if not isinstance(condition, AttributeCondition):
             raise TypeError(
                 f"ConditionalSpace requires an AttributeCondition "
-                f"(FieldCondition or MultiFieldLambda) at the top level, "
+                f"(FieldCondition or MultiFieldLambdaCondition) at the top level, "
                 f"got {type(condition).__name__}. AttributeConditions are required "
                 f"for proper dependency tracking and ordered sampling."
             )
 
-        self.condition = condition
-        self.true_branch = true
-        self.false_branch = false
+        self._condition = condition
+        self._true_branch = true
+        self._false_branch = false
 
         # Store whether branches are spaces or fixed values
-        self.true_is_space = isinstance(true, Space)
-        self.false_is_space = isinstance(false, Space)
+        self._true_is_space = isinstance(true, Space)
+        self._false_is_space = isinstance(false, Space)
 
-        # Call parent __init__ with default and description
+        # Call parent __init__ (no default for ConditionalSpace)
         super().__init__(description=description)
 
+    @property
+    def condition(self) -> AttributeCondition:
+        """The condition that determines which branch is active."""
+        return self._condition
+
+    @property
+    def true_branch(self) -> Space[Any] | Any:
+        """The space or value used when condition is True."""
+        return self._true_branch
+
+    @property
+    def false_branch(self) -> Space[Any] | Any:
+        """The space or value used when condition is False."""
+        return self._false_branch
+
+    @property
+    def true_is_space(self) -> bool:
+        """Whether true_branch is a Space (vs. fixed value)."""
+        return self._true_is_space
+
+    @property
+    def false_is_space(self) -> bool:
+        """Whether false_branch is a Space (vs. fixed value)."""
+        return self._false_is_space
+
     def __set_name__(self, owner: type, name: str) -> None:
-        """
-        Called when the space is assigned to a class attribute.
-        Propagates the field name to nested spaces in branches.
+        """Set the field name and propagate to nested spaces.
+
+        Args:
+            owner: The class that owns this descriptor.
+            name: The name of the attribute.
         """
         super().__set_name__(owner, name)
 
         # Propagate field_name to nested spaces
-        if self.true_is_space:
-            self.true_branch.field_name = name
-        if self.false_is_space:
-            self.false_branch.field_name = name
+        if self._true_is_space:
+            self._true_branch.field_name = name
+        if self._false_is_space:
+            self._false_branch.field_name = name
 
     def _get_active_branch(self, config: Any) -> Space[Any] | Any:
-        """
-        Determine which branch to use based on the condition.
+        """Get the active branch based on the condition.
 
         Args:
-            config: The configuration object to evaluate against.
+            config: Config object to evaluate the condition on.
 
         Returns:
-            Either true_branch or false_branch depending on condition.
+            The active branch (true or false).
         """
-        if self.condition(config):
-            return self.true_branch
+        if self._condition(config):
+            return self._true_branch
         else:
-            return self.false_branch
+            return self._false_branch
 
     def contains(self, other: Space) -> bool:
+        """Check if another space is contained within this space.
+
+        Not implemented for ConditionalSpace due to complexity.
+
+        Raises:
+            NotImplementedError: Always raised.
+        """
         raise NotImplementedError
 
     def validate(self, value: Any) -> Any:
-        """
-        Validate a value against the appropriate branch.
+        """Validate a value (requires config context).
 
-        Note: This method signature matches the base Space class.
-        The config object is accessed via the descriptor protocol's __set__.
+        This method is called from __set__ but needs the config object
+        for condition evaluation. The actual validation is handled by
+        validate_with_config() which is called from the Config class validator.
 
         Args:
             value: The value to validate.
 
         Returns:
-            The validated value.
-
-        Raises:
-            ValueError: If validation fails.
+            The value (validation happens in validate_with_config).
         """
         # This will be called from __set__ with the config object available
-        # We need to get the config from the call context
-        # This is handled in the Config class validator
+        # The actual validation is handled in the Config class validator
         return value
 
     def validate_with_config(self, value: Any, config: Any) -> Any:
-        """
-        Validate a value against the appropriate branch with explicit config.
+        """Validate a value using the config object for condition evaluation.
 
         Args:
             value: The value to validate.
-            config: The configuration object (needed to evaluate condition).
+            config: The config object to evaluate the condition on.
 
         Returns:
             The validated value.
 
         Raises:
-            ValueError: If validation fails.
-            RuntimeError: If the conditional cannot be evaluated.
+            ValueError: If the value is invalid for the active branch.
+            RuntimeError: If condition evaluation fails.
         """
         from spax.config import Config
 
@@ -191,6 +225,7 @@ class ConditionalSpace(Space[Any]):
             else:
                 return active_branch.validate(value)
         else:
+            # Fixed value - check equality or type match
             if isinstance(active_branch, type) and issubclass(active_branch, Config):
                 if not isinstance(value, active_branch):
                     raise ValueError(
@@ -206,15 +241,15 @@ class ConditionalSpace(Space[Any]):
             return value
 
     def sample(self) -> Any:
-        """
-        Sample from this space.
+        """Sample a value (not supported without config context).
 
-        Note: Conditional spaces cannot be sampled independently.
-        They require a config object with dependency values already set.
-        Use Config.random() instead.
+        ConditionalSpace cannot be sampled independently because it needs
+        the config object to evaluate the condition. Use Config.random()
+        instead, which samples the entire configuration with proper
+        dependency ordering.
 
         Raises:
-            NotImplementedError: Always, as conditionals need config context.
+            NotImplementedError: Always raised.
         """
         raise NotImplementedError(
             f"ConditionalSpace '{self.field_name}' cannot be sampled independently. "
@@ -223,12 +258,10 @@ class ConditionalSpace(Space[Any]):
         )
 
     def sample_with_config(self, config: Any) -> Any:
-        """
-        Sample from the appropriate branch with explicit config.
+        """Sample a value using the config object for condition evaluation.
 
         Args:
-            config: The configuration object (needed to evaluate condition).
-                   Must contain values for all fields this conditional depends on.
+            config: The config object to evaluate the condition on.
 
         Returns:
             A sampled value from the active branch.
@@ -258,19 +291,18 @@ class ConditionalSpace(Space[Any]):
     def __get_pydantic_core_schema__(
         cls, source_type: Any, handler: GetCoreSchemaHandler
     ) -> CoreSchema:
-        """Provide Pydantic schema for any-type validation."""
+        """Provide Pydantic schema for conditional validation."""
         return core_schema.no_info_after_validator_function(
             lambda x: x, core_schema.any_schema()
         )
 
     def __repr__(self) -> str:
-        """Return a string representation."""
+        """Return a string representation of this space."""
         parts = [
-            f"condition={self.condition!r}",
-            f"true={self.true_branch!r}",
-            f"false={self.false_branch!r}",
+            f"condition={self._condition!r}",
+            f"true={self._true_branch!r}",
+            f"false={self._false_branch!r}",
         ]
-
         if self.description is not None:
             parts.append(f"description={self.description!r}")
 
@@ -284,17 +316,15 @@ def Conditional(
     false: Space[Any] | Any,
     description: str | None = None,
 ) -> Any:
-    """
-    Create a conditional search space (type-checker friendly).
+    """Factory function for creating a ConditionalSpace.
 
-    This function returns Any to satisfy type checkers when used as:
-        my_param: float = Conditional(...)
+    This is the primary user-facing API for defining conditional parameter spaces.
 
     Args:
-        condition: AttributeCondition determining which branch to activate
-        true: Space or value when condition is True
-        false: Space or value when condition is False
-        description: Description of the parameter
+        condition: AttributeCondition that determines which branch is active.
+        true: Space or fixed value to use when condition is True.
+        false: Space or fixed value to use when condition is False.
+        description: Parameter description.
 
     Returns:
         A ConditionalSpace instance.
@@ -302,41 +332,19 @@ def Conditional(
     Examples:
         >>> import spax as sp
         >>>
-        >>> # Simple field-based conditional
-        >>> class MyConfig(sp.Config):
-        ...     use_dropout: bool
-        ...     dropout_rate: float = sp.Conditional(
-        ...         sp.FieldCondition("use_dropout", sp.EqualsTo(True)),
-        ...         true=sp.Float(gt=0, lt=0.5),
-        ...         false=0.0
-        ...     )
+        >>> # Conditional with fixed false value
+        >>> dropout_rate = sp.Conditional(
+        ...     sp.FieldCondition("use_dropout", sp.EqualsTo(True)),
+        ...     true=sp.Float(gt=0.0, lt=0.5),
+        ...     false=0.0
+        ... )
         >>>
-        >>> # Multi-field conditional
-        >>> class TrainingConfig(sp.Config):
-        ...     batch_size: int = sp.Int(ge=1, le=128)
-        ...     grad_accumulation_steps: int = sp.Int(ge=1, le=32)
-        ...     optimizer: str = sp.Conditional(
-        ...         sp.MultiFieldLambda(
-        ...             ["batch_size", "grad_accumulation_steps"],
-        ...             lambda batch_size, grad_accumulation_steps:
-        ...                 batch_size * grad_accumulation_steps > 64
-        ...         ),
-        ...         true="adam",
-        ...         false="sgd"
-        ...     )
-        >>>
-        >>> # Nested conditionals with different space types
-        >>> class ModelConfig(sp.Config):
-        ...     model_type: str = sp.Categorical(["transformer", "cnn", "rnn"])
-        ...     hidden_size: int = sp.Conditional(
-        ...         sp.FieldCondition("model_type", sp.EqualsTo("transformer")),
-        ...         true=sp.Conditional(
-        ...             sp.FieldCondition("model_type", sp.EqualsTo("transformer")),
-        ...             true=sp.Int(ge=512, le=2048),
-        ...             false=sp.Int(ge=128, le=512)
-        ...         ),
-        ...         false=sp.Int(ge=64, le=256)
-        ...     )
+        >>> # Conditional with both branches as spaces
+        >>> learning_rate = sp.Conditional(
+        ...     sp.FieldCondition("optimizer", sp.EqualsTo("adam")),
+        ...     true=sp.Float(ge=1e-4, le=1e-2, distribution="log"),
+        ...     false=sp.Float(ge=1e-3, le=1e-1, distribution="log")
+        ... )
     """
     return ConditionalSpace(
         condition=condition,

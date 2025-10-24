@@ -1,46 +1,116 @@
-"""
-Configuration base class with integrated search space support.
+"""Core Config class for defining searchable configurations.
 
-This module provides the Config class that combines Pydantic's
-validation with searchable parameter spaces for HPO.
+This module provides the Config base class, which is the main user-facing API
+for defining configurations with search spaces. Config classes use Pydantic
+for validation and add search space functionality on top.
+
+Config classes support:
+- Declarative search space definition using Space objects
+- Automatic space inference from type annotations
+- Random sampling with reproducible seeds
+- Integration with HPO libraries (Optuna, etc.)
+- Serialization/deserialization (JSON, YAML, TOML)
+- Override application to narrow search spaces
+- Nested configurations
+
+Examples:
+    >>> import spax as sp
+    >>>
+    >>> # Define a searchable configuration
+    >>> class MyConfig(sp.Config):
+    ...     learning_rate: float = sp.Float(ge=1e-5, le=1e-1, distribution='log')
+    ...     num_layers: int = sp.Int(ge=1, le=10)
+    ...     optimizer: str = sp.Categorical(["adam", "sgd", "rmsprop"])
+    ...     use_dropout: bool
+    ...     dropout_rate: float = sp.Conditional(
+    ...         sp.FieldCondition("use_dropout", sp.EqualsTo(True)),
+    ...         true=sp.Float(gt=0.0, lt=0.5),
+    ...         false=0.0
+    ...     )
+    >>>
+    >>> # Sample random configurations
+    >>> config = MyConfig.random(seed=42)
+    >>>
+    >>> # Apply overrides to narrow search space
+    >>> override = {"num_layers": {"ge": 5, "le": 7}}
+    >>> config = MyConfig.random(seed=42, override=override)
+    >>>
+    >>> # Serialize and deserialize
+    >>> json_str = config.model_dump_json()
+    >>> loaded_config = MyConfig.model_validate_json(json_str)
 """
 
-from types import UnionType
-from typing import Any, ClassVar, Self, Union, get_args, get_origin
+from typing import Any, ClassVar, Self
 
 from pydantic import BaseModel, model_validator
 
 from .nodes import ConfigNode
 from .samplers import RandomSampler
-
-
-def _type_from_annotation(annotation: Any, type_name: str) -> type | None:
-    """Find a type by name within a type annotation (union, etc)."""
-    # Check if it's a union type
-    if get_origin(annotation) is Union or isinstance(annotation, UnionType):
-        # Search through union members
-        for arg in get_args(annotation):
-            if isinstance(arg, type) and arg.__name__ == type_name:
-                return arg
-
-    # Check if it's directly a Config type
-    elif isinstance(annotation, type) and annotation.__name__ == type_name:
-        return annotation
-
-    return None
+from .utils import type_from_annotation
 
 
 class Config(BaseModel, validate_assignment=True):
-    """
-    Base class for searchable configuration objects.
+    """Base class for searchable configurations.
+
+    Config extends Pydantic's BaseModel with search space functionality.
+    Subclasses can define fields with Space objects (Float, Int, Categorical,
+    Conditional) to create searchable parameters, or use regular Python types
+    for fixed values or automatic inference.
+
+    Class Attributes:
+        _node: Internal ConfigNode representing the search space structure
+            (automatically created when class is defined).
+
+    Key Features:
+        - Declarative search space definition
+        - Automatic type inference for simple cases
+        - Random sampling with seeds
+        - Override application
+        - Nested configurations
+        - Multiple serialization formats
+
+    Examples:
+        >>> import spax as sp
+        >>>
+        >>> # Simple configuration
+        >>> class TrainingConfig(sp.Config):
+        ...     learning_rate: float = sp.Float(ge=1e-5, le=1e-1)
+        ...     batch_size: int = sp.Int(ge=16, le=128)
+        ...     optimizer: str = sp.Categorical(["adam", "sgd"])
+        >>>
+        >>> # Sample configuration
+        >>> config = TrainingConfig.random(seed=42)
+        >>> print(config.learning_rate, config.batch_size, config.optimizer)
+        >>>
+        >>> # Nested configuration
+        >>> class ModelConfig(sp.Config):
+        ...     num_layers: int = sp.Int(ge=1, le=10)
+        ...     hidden_size: int = sp.Int(ge=64, le=512)
+        >>>
+        >>> class ExperimentConfig(sp.Config):
+        ...     training: TrainingConfig
+        ...     model: ModelConfig
+        >>>
+        >>> # Sample nested configuration
+        >>> exp_config = ExperimentConfig.random(seed=42)
     """
 
+    # Class variable to hold the ConfigNode (set during class creation)
     _node: ClassVar[ConfigNode | None] = None
 
     @classmethod
     def __pydantic_init_subclass__(cls, **kwargs: Any) -> None:
-        super().__pydantic_init_subclass__(**kwargs)
+        """Hook called when a Config subclass is created.
 
+        This creates the ConfigNode that represents the search space structure.
+
+        Args:
+            **kwargs: Additional keyword arguments from class definition.
+
+        Raises:
+            TypeError: If there's an error creating the ConfigNode.
+        """
+        super().__pydantic_init_subclass__(**kwargs)
         try:
             cls._node = ConfigNode(cls)
         except Exception as e:
@@ -49,145 +119,147 @@ class Config(BaseModel, validate_assignment=True):
     @model_validator(mode="before")
     @classmethod
     def validate_spaces(cls, data: dict[str, Any]) -> dict[str, Any]:
+        """Validate all fields using their space definitions.
+
+        This validator runs before Pydantic's validation and handles
+        Space-specific validation (bounds checking, conditional evaluation, etc.).
+
+        Args:
+            data: Dictionary of field values to validate.
+
+        Returns:
+            Dictionary of validated values.
+
+        Raises:
+            ValueError: If validation fails for any field.
+        """
         assert cls._node is not None
         return cls._node.validate_spaces(data)
 
     @classmethod
     def get_parameter_names(cls) -> list[str]:
-        """Get all tunable parameter names in this configuration.
+        """Get all parameter names in the search space.
+
+        Returns hierarchical parameter names using "::" as separator.
+        Fixed values are not included in the list.
 
         Returns:
-            List of fully qualified parameter names that can be sampled/tuned.
+            List of fully-qualified parameter names.
 
-        Example:
-            >>> class MyConfig(Config):
-            ...     x: int = Int(ge=0, le=10)
-            ...     y: float = Float(ge=0.0, le=1.0)
+        Examples:
+            >>> class MyConfig(sp.Config):
+            ...     lr: float = sp.Float(ge=1e-5, le=1e-1)
+            ...     layers: int = sp.Int(ge=1, le=10)
+            ...     name: str = "my_model"  # Fixed value
+            >>>
             >>> MyConfig.get_parameter_names()
-            ['MyConfig.x', 'MyConfig.y']
+            ['MyConfig.lr', 'MyConfig.layers']
         """
         assert cls._node is not None
         return cls._node.get_parameter_names()
 
     @classmethod
-    def get_node(cls, override: dict[str, Any] | None = None) -> Any:
-        """Get the configuration node, optionally with overrides applied.
-
-        This provides access to the internal node structure for advanced operations
-        like getting signatures, hashes, parameter names, etc.
+    def get_node(cls, override: dict[str, Any] | None = None) -> ConfigNode:
+        """Get the ConfigNode, optionally with overrides applied.
 
         Args:
-            override: Optional overrides to apply to the search space
+            override: Optional dictionary of overrides to apply to the node.
 
         Returns:
-            The ConfigNode, potentially with overrides applied
+            The ConfigNode (with overrides applied if provided).
 
-        Example:
-            >>> class MyConfig(Config):
-            ...     x: int = Int(ge=0, le=10)
+        Examples:
             >>> node = MyConfig.get_node()
-            >>> hash1 = node.get_space_hash()
-            >>>
-            >>> # With overrides
-            >>> node2 = MyConfig.get_node(override={"x": {"ge": 5, "le": 8}})
-            >>> hash2 = node2.get_space_hash()
-            >>> assert hash1 != hash2
+            >>> override_node = MyConfig.get_node(override={"lr": {"ge": 1e-4}})
         """
         assert cls._node is not None
-
         if override is None:
             return cls._node
-
         return cls._node.apply_override(override)
 
     @classmethod
     def random(
         cls, seed: int | None = None, override: dict[str, Any] | None = None
     ) -> Self:
-        """Generate a random configuration by sampling from the search space.
+        """Sample a random configuration.
+
+        Generates a random configuration by sampling from all search spaces.
+        Uses a RandomSampler by default, but can be extended to use other
+        samplers (e.g., Optuna).
 
         Args:
-            seed: Random seed for reproducibility
-            override: Optional overrides to apply before sampling
+            seed: Random seed for reproducibility. If None, uses system time.
+            override: Optional dictionary of overrides to narrow the search space
+                before sampling. See get_override_template() for structure.
 
         Returns:
-            A randomly sampled configuration instance
+            A Config instance with randomly sampled values.
 
-        Example:
-            >>> class MyConfig(Config):
-            ...     x: int = Int(ge=0, le=10)
-            ...     y: float = Float(ge=0.0, le=1.0)
+        Examples:
+            >>> # Basic random sampling
             >>> config = MyConfig.random(seed=42)
-            >>> config2 = MyConfig.random(seed=42, override={"x": 5})
+            >>>
+            >>> # With overrides to narrow search space
+            >>> config = MyConfig.random(
+            ...     seed=42,
+            ...     override={
+            ...         "learning_rate": {"ge": 1e-4, "le": 1e-2},
+            ...         "optimizer": ["adam", "sgd"]  # Exclude "rmsprop"
+            ...     }
+            ... )
         """
-
         node = cls.get_node(override)
 
-        # Sample using RandomSampler
+        # Create sampler and sample from the node
         sampler = RandomSampler(seed=seed)
         sampled_values = node.sample(sampler)
 
-        # Create and return the config instance
+        # Validate and return the config instance
         return cls.model_validate(sampled_values)
 
     @classmethod
     def get_override_template(cls) -> dict[str, Any]:
-        """Get a template dict structure for overrides.
+        """Get a template showing the structure for overrides.
 
-        This returns a dict showing all available fields and their override options.
-        Users can fill this in to create custom overrides.
+        The template shows the nested dictionary structure expected for
+        overriding the search space. Use this as a guide for creating
+        override dictionaries.
 
         Returns:
-            Dict template for overrides
+            Dictionary template showing override structure.
 
-        Example:
-            >>> class MyConfig(Config):
-            ...     x: int = Int(ge=0, le=10)
-            ...     y: str = Categorical(["a", "b", "c"])
+        Examples:
             >>> template = MyConfig.get_override_template()
-            >>> # Fill in the template
-            >>> override = {"x": {"ge": 5, "le": 8}, "y": ["a", "b"]}
-            >>> config = MyConfig.random(override=override)
+            >>> print(template)
+            {
+                'learning_rate': {'ge': 1e-05, 'le': 0.1},
+                'num_layers': {'ge': 1, 'le': 10},
+                'optimizer': ['adam', 'sgd', 'rmsprop']
+            }
         """
         assert cls._node is not None
         return cls._node.get_override_template()
 
     def model_dump(self) -> dict[str, Any]:
-        """
-        Serialize the configuration to a dictionary.
+        """Serialize the configuration to a dictionary.
 
-        This method extends Pydantic's model_dump to add type discrimination
-        for nested Config instances. When a field contains a Config object
-        (e.g., from a union type like `InnerConfig1 | InnerConfig2`), the
-        serialized dict includes a `__type__` field with the class name to
-        enable correct deserialization.
+        Extends Pydantic's model_dump to add type discriminators for
+        nested Config objects, enabling proper deserialization.
 
         Returns:
-            A dictionary representation of the config with type information
-            for nested Config objects.
+            Dictionary representation with __type__ discriminators for
+            nested Config objects.
 
-        Example:
-            >>> class Inner1(Config):
-            ...     x: int = Int(ge=0, lt=10)
-            ...
-            >>> class Inner2(Config):
-            ...     y: float = Float(ge=0, lt=1)
-            ...
-            >>> class Outer(Config):
-            ...     name: str = "test"
-            ...     inner: Inner1 | Inner2
-            ...
-            >>> config = Outer(name="example", inner=Inner1(x=5))
-            >>> config.model_dump()
-            {
-                'name': 'example',
-                'inner': {'__type__': 'Inner1', 'x': 5}
-            }
+        Examples:
+            >>> config = MyConfig.random()
+            >>> data = config.model_dump()
+            >>> # data includes __type__ for nested configs
         """
         result: dict[str, Any] = {}
 
         for field_name in self.__class__.model_fields:
             value = getattr(self, field_name)
+
             if isinstance(value, Config):
                 # Serialize nested Config with type discriminator
                 serialized = value.model_dump()
@@ -199,18 +271,17 @@ class Config(BaseModel, validate_assignment=True):
         return result
 
     def model_dump_json(self, *, indent: int | None = 2, **json_kwargs: Any) -> str:
-        """
-        Serialize the configuration to a JSON string.
+        """Serialize the configuration to JSON.
 
         Args:
-            indent: Number of spaces for indentation (default: 2). Set to None for compact output.
-            **json_kwargs: Additional arguments passed to json.dumps().
+            indent: Number of spaces for indentation (default=2).
+            **json_kwargs: Additional arguments passed to json.dumps.
 
         Returns:
-            A JSON string representation of the config.
+            JSON string representation.
 
-        Example:
-            >>> config = MyConfig(var_1=50, var_2=InnerConfig1(x=5))
+        Examples:
+            >>> config = MyConfig.random()
             >>> json_str = config.model_dump_json()
             >>> print(json_str)
         """
@@ -220,20 +291,19 @@ class Config(BaseModel, validate_assignment=True):
         return json.dumps(data, indent=indent, **json_kwargs)
 
     def model_dump_yaml(self, **yaml_kwargs: Any) -> str:
-        """
-        Serialize the configuration to a YAML string.
+        """Serialize the configuration to YAML.
 
         Args:
-            **yaml_kwargs: Additional arguments passed to yaml.dump().
+            **yaml_kwargs: Additional arguments passed to yaml.dump.
 
         Returns:
-            A YAML string representation of the config.
+            YAML string representation.
 
         Raises:
             RuntimeError: If PyYAML is not installed.
 
-        Example:
-            >>> config = MyConfig(var_1=50, var_2=InnerConfig1(x=5))
+        Examples:
+            >>> config = MyConfig.random()
             >>> yaml_str = config.model_dump_yaml()
             >>> print(yaml_str)
         """
@@ -249,17 +319,16 @@ class Config(BaseModel, validate_assignment=True):
         return yaml.dump(data, sort_keys=False, **yaml_kwargs)
 
     def model_dump_toml(self) -> str:
-        """
-        Serialize the configuration to a TOML string.
+        """Serialize the configuration to TOML.
 
         Returns:
-            A TOML string representation of the config.
+            TOML string representation.
 
         Raises:
             RuntimeError: If tomli-w is not installed.
 
-        Example:
-            >>> config = MyConfig(var_1=50, var_2=InnerConfig1(x=5))
+        Examples:
+            >>> config = MyConfig.random()
             >>> toml_str = config.model_dump_toml()
             >>> print(toml_str)
         """
@@ -276,31 +345,23 @@ class Config(BaseModel, validate_assignment=True):
 
     @classmethod
     def model_validate(cls, data: Any) -> Self:
-        """
-        Deserialize and validate data into a Config instance.
+        """Validate and create a Config instance from data.
 
-        This method extends Pydantic's model_validate to handle type
-        discrimination for nested Config instances. When encountering
-        a dict with a `__type__` field, it uses that to instantiate
-        the correct Config subclass from union types.
+        Handles __type__ discriminators for nested Config objects,
+        enabling proper deserialization of configurations.
 
         Args:
-            data: Input data to validate (typically a dict).
+            data: Data to validate. Can be a dict, or any format Pydantic accepts.
 
         Returns:
-            A validated Config instance.
+            Validated Config instance.
 
         Raises:
-            ValueError: If the data is invalid or type discrimination fails.
+            ValueError: If data is invalid or __type__ references unknown Config.
 
-        Example:
-            >>> data = {
-            ...     'name': 'example',
-            ...     'inner': {'__type__': 'Inner1', 'x': 5}
-            ... }
-            >>> config = Outer.model_validate(data)
-            >>> isinstance(config.inner, Inner1)
-            True
+        Examples:
+            >>> data = {"learning_rate": 0.001, "num_layers": 5}
+            >>> config = MyConfig.model_validate(data)
         """
         if not isinstance(data, dict):
             # Let pydantic handle non-dict data
@@ -319,7 +380,7 @@ class Config(BaseModel, validate_assignment=True):
                     raise ValueError(f"Unknown field '{field_name}' in {cls.__name__}")
 
                 field_info = cls.model_fields[field_name]
-                config_type = _type_from_annotation(field_info.annotation, type_name)
+                config_type = type_from_annotation(field_info.annotation, type_name)
 
                 if config_type is None or not issubclass(config_type, Config):
                     raise ValueError(
@@ -340,18 +401,17 @@ class Config(BaseModel, validate_assignment=True):
 
     @classmethod
     def model_validate_json(cls, json_data: str | bytes, **json_kwargs: Any) -> Self:
-        """
-        Deserialize and validate a JSON string into a Config instance.
+        """Validate and create a Config instance from JSON.
 
         Args:
-            json_data: JSON string or bytes to deserialize.
-            **json_kwargs: Additional arguments passed to json.loads().
+            json_data: JSON string or bytes.
+            **json_kwargs: Additional arguments passed to json.loads.
 
         Returns:
-            A validated Config instance.
+            Validated Config instance.
 
-        Example:
-            >>> json_str = '{"var_1": 50, "var_2": {"__type__": "InnerConfig1", "x": 5}}'
+        Examples:
+            >>> json_str = '{"learning_rate": 0.001, "num_layers": 5}'
             >>> config = MyConfig.model_validate_json(json_str)
         """
         import json
@@ -361,25 +421,22 @@ class Config(BaseModel, validate_assignment=True):
 
     @classmethod
     def model_validate_yaml(cls, yaml_data: str | bytes, **yaml_kwargs: Any) -> Self:
-        """
-        Deserialize and validate a YAML string into a Config instance.
+        """Validate and create a Config instance from YAML.
 
         Args:
-            yaml_data: YAML string or bytes to deserialize.
-            **yaml_kwargs: Additional arguments passed to yaml.safe_load().
+            yaml_data: YAML string or bytes.
+            **yaml_kwargs: Additional arguments passed to yaml.safe_load.
 
         Returns:
-            A validated Config instance.
+            Validated Config instance.
 
         Raises:
             RuntimeError: If PyYAML is not installed.
 
-        Example:
+        Examples:
             >>> yaml_str = '''
-            ... var_1: 50
-            ... var_2:
-            ...   __type__: InnerConfig1
-            ...   x: 5
+            ... learning_rate: 0.001
+            ... num_layers: 5
             ... '''
             >>> config = MyConfig.model_validate_yaml(yaml_str)
         """
@@ -396,21 +453,18 @@ class Config(BaseModel, validate_assignment=True):
 
     @classmethod
     def model_validate_toml(cls, toml_data: str | bytes) -> Self:
-        """
-        Deserialize and validate a TOML string into a Config instance.
+        """Validate and create a Config instance from TOML.
 
         Args:
-            toml_data: TOML string or bytes to deserialize.
+            toml_data: TOML string or bytes.
 
         Returns:
-            A validated Config instance.
+            Validated Config instance.
 
-        Example:
+        Examples:
             >>> toml_str = '''
-            ... var_1 = 50
-            ... [var_2]
-            ... __type__ = "InnerConfig1"
-            ... x = 5
+            ... learning_rate = 0.001
+            ... num_layers = 5
             ... '''
             >>> config = MyConfig.model_validate_toml(toml_str)
         """
@@ -423,7 +477,11 @@ class Config(BaseModel, validate_assignment=True):
         return cls.model_validate(data)
 
     def __repr__(self) -> str:
-        """Return a detailed string representation."""
+        """Return a string representation of this config.
+
+        Returns:
+            String showing class name and all field values.
+        """
         field_strs = []
         for field_name in self.__class__.model_fields:
             value = getattr(self, field_name, None)
@@ -432,4 +490,9 @@ class Config(BaseModel, validate_assignment=True):
         return f"{self.__class__.__name__}({', '.join(field_strs)})"
 
     def __str__(self) -> str:
+        """Return a string representation of this config.
+
+        Returns:
+            Same as __repr__.
+        """
         return self.__repr__()

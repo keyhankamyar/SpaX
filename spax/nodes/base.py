@@ -1,72 +1,116 @@
+"""Base classes for search space node representation.
+
+This module defines the abstract base class for nodes in the internal tree
+representation of search spaces. Nodes represent the structure of configuration
+spaces and handle operations like override application, parameter enumeration,
+and sampling.
+"""
+
 from abc import ABC, abstractmethod
 from typing import Any, Self
 
 
 class Node(ABC):
-    """Base class for all nodes in the configuration tree."""
+    """Abstract base class for all search space nodes.
+
+    Nodes form an internal tree representation of the search space structure.
+    Each node corresponds to a field in a Config class and can be:
+    - FixedNode: A field with a fixed value
+    - SpaceNode: A field with a sampling space (NumberNode, CategoricalNode, ConditionalNode)
+    - ConfigNode: A nested Config class
+
+    Nodes handle:
+    - Applying overrides to narrow or fix search spaces
+    - Enumerating parameter names in a hierarchical structure
+    - Sampling values according to their space definitions
+    - Generating signatures for space hashing
+    - Creating override templates for users
+
+    This is an internal API used by Config classes. Users typically don't
+    interact with nodes directly.
+    """
 
     @abstractmethod
     def apply_override(self, override: Any) -> Self:
-        """Apply an override to this node and return a new modified node.
+        """Apply an override to this node, returning a new modified node.
 
-        This method never modifies the node in-place. It always returns a new
-        instance with the override applied. This enables safe cloning of the
-        entire configuration tree with modified search spaces.
+        Overrides allow narrowing search spaces or fixing values. The exact
+        behavior depends on the node type:
+        - FixedNode: Raises error (cannot override fixed values)
+        - NumberNode: Can narrow bounds or fix to a value
+        - CategoricalNode: Can reduce choices or fix to a choice
+        - ConditionalNode: Can override individual branches
+        - ConfigNode: Can override nested fields
 
         Args:
-            override: The override specification.
+            override: Override specification (type depends on node type).
 
         Returns:
-            A new node instance with the override applied.
+            A new node with the override applied.
+
+        Raises:
+            ValueError: If override is invalid or incompatible.
+            TypeError: If override has wrong type.
         """
         pass
 
     @abstractmethod
     def get_parameter_names(self, prefix: str) -> list[str]:
-        """Get all tunable parameter names under this node.
+        """Get all parameter names in this node's subtree.
+
+        Parameter names are hierarchical, using "::" to separate levels:
+        - "Config.field_name" for top-level fields
+        - "Config.nested::NestedConfig.field_name" for nested fields
 
         Args:
-            prefix: The hierarchical path prefix for this node (e.g., "ModelConfig.encoder_config")
+            prefix: The prefix to prepend to parameter names (typically the
+                path from root to this node).
 
         Returns:
-            List of fully qualified parameter names that can be sampled/tuned.
-            Fixed values return empty list, while tunable spaces return their names.
+            List of fully-qualified parameter names.
         """
         pass
 
     @abstractmethod
     def sample(self, sampler: Any, prefix: str) -> Any:
-        """Sample a value from this node using the provided sampler.
+        """Sample a value from this node using the given sampler.
 
         Args:
-            sampler: A Sampler instance that provides suggest_* methods
-            prefix: The hierarchical path prefix for this node
+            sampler: A Sampler instance that generates parameter values.
+            prefix: The parameter name prefix (for tracking in sampler).
 
         Returns:
-            A sampled value appropriate for this node type.
+            A sampled value (type depends on the node type).
+
+        Raises:
+            NotImplementedError: For nodes that require config context
+                (e.g., ConditionalNode).
         """
         pass
 
     @abstractmethod
     def get_signature(self) -> str:
-        """Get a string representation of this node's structure.
+        """Get a deterministic signature representing this node's structure.
 
-        This signature captures all aspects of the search space that affect
-        sampling, enabling detection of space changes between experiments.
+        Signatures are used for hashing search spaces to detect when the
+        space structure changes. The signature includes all aspects that
+        affect the possible parameter values (bounds, choices, conditions, etc.).
 
         Returns:
-            A deterministic string representation of the space structure.
+            A string signature that uniquely identifies this node's structure.
         """
         pass
 
     @abstractmethod
     def get_override_template(self) -> dict[str, Any] | None:
-        """Get a template dict structure for overrides.
+        """Get a template showing the structure for overriding this node.
 
-        Returns a dict that shows the structure for overriding this node,
-        with empty/null values. Users can fill this in to create overrides.
+        Override templates help users understand what overrides are possible
+        and what structure they should follow. The template shows the nested
+        dictionary/list structure expected for overrides.
 
         Returns:
-            Template dict for overrides, or None if not applicable
+            A template dict/list showing override structure, or None if
+            this node cannot be overridden (e.g., FixedNode).
         """
         pass

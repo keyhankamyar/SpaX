@@ -1,8 +1,7 @@
-"""
-Base class and protocols for search space definitions.
+"""Base classes and types for search spaces.
 
-This module provides the abstract Space class that all concrete
-space types (Float, Int, Categorical, etc.) inherit from.
+This module defines the fundamental abstract base class for all search spaces
+in SpaX, along with utility types for handling unset/undefined values.
 """
 
 from abc import ABC, abstractmethod
@@ -13,44 +12,52 @@ from pydantic_core import CoreSchema
 
 
 class _Unset:
-    """Sentinel value to distinguish 'no default provided' from 'default is None'."""
+    """Sentinel class to represent an unset or undefined value.
+
+    This is used instead of None to distinguish between "no value provided"
+    and "None was explicitly provided as a value".
+    """
 
     def __repr__(self) -> str:
         return "UNSET"
 
 
+# Singleton instance representing an unset value
 UNSET = _Unset()
+
 
 T = TypeVar("T")
 
 
 class Space(ABC, Generic[T]):
-    """
-    Abstract base class for all searchable parameter spaces.
+    """Abstract base class for all search spaces.
 
-    A Space defines:
-    - The valid range/choices for a parameter
-    - How to validate parameter values
-    - How to sample random values
-    - How to integrate with Pydantic for type validation
+    A Space defines a set of possible values that a parameter can take,
+    along with validation logic and metadata like defaults and descriptions.
+    Spaces can be numeric ranges, categorical choices, or conditional spaces
+    that depend on other parameters.
 
-    Spaces act as Python descriptors, intercepting attribute access
-    to provide automatic validation on assignment.
+    This class implements the descriptor protocol, allowing spaces to be
+    used as class attributes that validate values on assignment.
 
-    Type Parameters:
-        T: The type of values this space produces (e.g., float, int, Any).
+    Attributes:
+        field_name: Name of the field this space is attached to (set by __set_name__).
+        default: Default value for this space, or UNSET if no default.
+        description: Optional human-readable description of this parameter.
     """
 
     def __init__(
         self, *, default: T | _Unset = UNSET, description: str | None = None
     ) -> None:
-        """
-        Initialize a space with optional default value and description.
+        """Initialize a Space.
 
         Args:
-            default: Default value to use when not specified. Must be valid for this space.
-                    If UNSET, no default is provided.
-            description: Human-readable description of this parameter.
+            default: Default value for this space. Must be valid according to
+                the space's constraints if provided.
+            description: Optional description of what this parameter controls.
+
+        Raises:
+            ValueError: If the default value is invalid for this space.
         """
         self.field_name: str | None = None
         self.default = default
@@ -70,47 +77,46 @@ class Space(ABC, Generic[T]):
                 self.field_name = original_field_name
 
     def __set_name__(self, owner: type, name: str) -> None:
-        """
-        Called automatically when the space is assigned to a class attribute.
+        """Called when the space is assigned to a class attribute.
 
-        This is part of the descriptor protocol and allows the space to
-        know which field name it's associated with for error messages.
+        This is part of the descriptor protocol and allows the space to know
+        its field name for better error messages and parameter tracking.
 
         Args:
             owner: The class that owns this descriptor.
-            name: The attribute name this space was assigned to.
+            name: The name of the attribute this descriptor is assigned to.
         """
         self.field_name = name
 
     @abstractmethod
     def contains(self, other: "Space") -> bool:
-        """Check if another space is contained within this space.
+        """Check if another space is a subset of this space.
 
-        A space contains another if:
-        1. They are the same type of space
-        2. The other space's constraints are more restrictive (fit within this space)
+        This is used for validating overrides - an override space must be
+        contained within the original space.
 
         Args:
-            other: Another space to check
+            other: Another space to check.
 
         Returns:
-            True if the other space is contained within this space
+            True if the other space's possible values are a subset of this
+            space's possible values.
         """
         pass
 
     @abstractmethod
     def validate(self, value: Any) -> T:
-        """
-        Validate and potentially transform a value for this space.
+        """Validate and potentially transform a value for this space.
 
         Args:
             value: The value to validate.
 
         Returns:
-            The validated (and possibly coerced) value.
+            The validated (and possibly transformed) value.
 
         Raises:
-            ValueError: If the value is invalid for this space.
+            ValueError: If the value is not valid for this space.
+            TypeError: If the value is of the wrong type.
         """
         pass
 
@@ -119,34 +125,30 @@ class Space(ABC, Generic[T]):
     def __get_pydantic_core_schema__(
         cls, source_type: Any, handler: GetCoreSchemaHandler
     ) -> CoreSchema:
-        """
-        Provide Pydantic with schema information for validation.
+        """Provide Pydantic schema for this space type.
 
-        This method is called by Pydantic during model creation to
-        understand how to validate values of this type.
+        This is part of Pydantic v2's schema generation and allows spaces
+        to integrate with Pydantic's validation system.
 
         Args:
-            source_type: The type annotation from the model field.
-            handler: Pydantic's schema generation handler.
+            source_type: The source type being validated.
+            handler: Pydantic's schema handler.
 
         Returns:
-            A Pydantic CoreSchema describing validation rules.
+            A Pydantic core schema for validation.
         """
         pass
 
     def __get__(self, obj: Any, objtype: type | None = None) -> T | "Space[T]":
-        """
-        Descriptor protocol: retrieve the value from an instance.
-
-        When accessed from the class (obj is None), returns the Space itself.
-        When accessed from an instance, returns the stored value.
+        """Descriptor protocol: get the value from an instance.
 
         Args:
-            obj: The instance being accessed, or None if accessed from class.
-            objtype: The type of the owner class.
+            obj: The instance to get the value from, or None if accessing from class.
+            objtype: The type of the instance.
 
         Returns:
-            The Space descriptor itself (if class access) or the field value (if instance access).
+            The space itself if accessed from the class, or the stored value
+            if accessed from an instance.
         """
         if obj is None:
             # Accessing from class returns the descriptor itself
@@ -155,24 +157,24 @@ class Space(ABC, Generic[T]):
         return obj.__dict__.get(self.field_name)
 
     def __set__(self, obj: Any, value: T) -> None:
-        """
-        Descriptor protocol: set and validate the value on an instance.
-
-        This is called whenever the attribute is assigned to, and ensures
-        that validation always occurs.
+        """Descriptor protocol: set and validate the value on an instance.
 
         Args:
-            obj: The instance being modified.
-            value: The value being assigned.
+            obj: The instance to set the value on.
+            value: The value to set (will be validated first).
 
         Raises:
-            ValueError: If validation fails.
+            ValueError: If the value is invalid for this space.
         """
         validated_value = self.validate(value)
         obj.__dict__[self.field_name] = validated_value
 
     def __repr__(self) -> str:
-        """Return a string representation of this space."""
+        """Return a string representation of this space.
+
+        Returns:
+            A string showing the space's type and key attributes.
+        """
         parts = [f"field_name={self.field_name!r}"]
         if self.default is not UNSET:
             parts.append(f"default={self.default!r}")

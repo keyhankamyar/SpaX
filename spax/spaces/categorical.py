@@ -1,8 +1,7 @@
-"""
-Categorical search space for discrete choice parameters.
+"""Categorical search spaces for discrete choice parameters.
 
-This module provides categorical spaces that sample from a discrete
-set of options with optional weighting.
+This module provides CategoricalSpace for defining parameters that can take
+one of a discrete set of values, with optional weights for non-uniform sampling.
 """
 
 from typing import Any
@@ -16,66 +15,97 @@ from .base import UNSET, Space, _Unset
 
 
 class Choice:
-    """
-    Represents a weighted choice in a categorical search space.
+    """A weighted choice option for categorical spaces.
 
-    Choices allow you to specify relative probabilities for different
-    options in a categorical distribution.
+    Choice allows specifying both a value and its sampling weight/probability.
+    Higher weights make a choice more likely to be sampled.
 
-    Example:
-        >>> choices = [
-        ...     Choice("relu", weight=1.0),
-        ...     Choice("gelu", weight=2.0),  # 2x more likely than relu
-        ...     "silu"  # Defaults to weight=1.0
-        ... ]
+    Attributes:
+        value: The actual value of this choice.
+        weight: Sampling weight (must be positive).
+
+    Examples:
+        >>> Choice("adam", weight=2.0)  # Twice as likely as weight=1.0
+        >>> Choice("sgd", weight=1.0)
     """
 
     def __init__(self, value: Any, weight: float = 1.0) -> None:
-        """
-        Initialize a weighted choice.
+        """Initialize a Choice with a value and weight.
 
         Args:
             value: The value this choice represents.
-            weight: Relative probability weight (must be positive).
+            weight: Sampling weight (must be positive, default=1.0).
 
         Raises:
-            AssertionError: If weight is not numeric or is non-positive.
+            TypeError: If weight is not numeric.
+            ValueError: If weight is not positive.
         """
         if not isinstance(weight, (float, int)):
             raise TypeError(f"weight must be numeric, got {type(weight).__name__}")
 
         weight = float(weight)
-
         if weight <= 0:
             raise ValueError(f"weight must be positive, got {weight}")
 
-        self.value = value
-        self.weight = weight
+        self._value = value
+        self._weight = weight
+
+    @property
+    def value(self) -> Any:
+        """The value of this choice."""
+        return self._value
+
+    @property
+    def weight(self) -> float:
+        """The sampling weight of this choice."""
+        return self._weight
 
     def __repr__(self) -> str:
-        """Return a string representation."""
-        return f"Choice(value={self.value!r}, weight={self.weight})"
+        """Return a string representation of this choice."""
+        return f"Choice(value={self._value!r}, weight={self._weight})"
 
     def __eq__(self, other: object) -> bool:
-        """Check equality based on value and weight."""
+        """Check equality with another Choice.
+
+        Args:
+            other: Another object to compare with.
+
+        Returns:
+            True if both value and weight are equal.
+        """
         if not isinstance(other, Choice):
             return NotImplemented
-        return self.value == other.value and self.weight == other.weight
+        return self._value == other._value and self._weight == other._weight
 
 
 class CategoricalSpace(Space[Any]):
-    """
-    Search space for categorical (discrete choice) parameters.
+    """Search space for categorical (discrete choice) parameters.
 
-    Supports both uniform and weighted sampling from a discrete set
-    of options. Choices can be simple values or nested Config types.
+    CategoricalSpace defines a parameter that can take one of a fixed set
+    of values. Values can be primitives, Config types, or any comparable object.
+    Optional weights allow non-uniform sampling probabilities.
 
-    Example:
-        >>> activation: str = Categorical(["relu", "gelu", "silu"])
-        >>> optimizer: Any = Categorical([
-        ...     Choice("adam", weight=2),
-        ...     Choice("sgd", weight=1),
+    Attributes:
+        choices: List of possible values (read-only).
+        weights: List of sampling weights (read-only).
+        probs: List of normalized probabilities (read-only).
+        raw_choices: Original choices list including Choice objects (read-only).
+
+    Examples:
+        >>> import spax as sp
+        >>>
+        >>> # Simple categorical with equal probabilities
+        >>> optimizer = sp.CategoricalSpace(["adam", "sgd", "rmsprop"])
+
+        >>> # Weighted categorical (adam is twice as likely)
+        >>> optimizer = sp.CategoricalSpace([
+        ...     sp.Choice("adam", weight=2.0),
+        ...     sp.Choice("sgd", weight=1.0),
+        ...     sp.Choice("rmsprop", weight=1.0)
         ... ])
+
+        >>> # Categorical with Config types
+        >>> model = sp.CategoricalSpace([ResNet, VGG, Transformer])
     """
 
     def __init__(
@@ -85,26 +115,25 @@ class CategoricalSpace(Space[Any]):
         default: Any | _Unset = UNSET,
         description: str | None = None,
     ) -> None:
-        """
-        Initialize a categorical space.
+        """Initialize a CategoricalSpace with choices.
 
         Args:
-            choices: List of possible values or Choice objects.
-            default: Default value to use when not specified. Must be one of the choices.
-            description: Human-readable description of this parameter.
+            choices: List of possible values. Can be raw values or Choice objects
+                with weights. All values must be comparable or Config types.
+            default: Default choice value.
+            description: Human-readable description.
 
         Raises:
-            ValueError: If choices list is empty.
-            ValueError: If any choice value is not comparable or hashable.
+            ValueError: If choices is empty or values are not comparable.
         """
         from spax.config import Config
 
         if not choices:
             raise ValueError("Categorical space must have at least one choice")
 
-        self.raw_choices = choices
-        self.choices: list[Any] = []
-        self.weights: list[float] = []
+        self._raw_choices = choices
+        self._choices: list[Any] = []
+        self._weights: list[float] = []
 
         # Process and validate choices
         for choice in choices:
@@ -124,35 +153,58 @@ class CategoricalSpace(Space[Any]):
                     f"Choice value {value!r} must be comparable or a Config type"
                 )
 
-            self.choices.append(value)
-            self.weights.append(weight)
+            self._choices.append(value)
+            self._weights.append(weight)
 
         # Normalize weights to probabilities
-        total_weight = sum(self.weights)
+        total_weight = sum(self._weights)
         if total_weight == 0:
             raise ValueError("Total weight cannot be zero")
-        self.probs = [w / total_weight for w in self.weights]
+
+        self._probs = [w / total_weight for w in self._weights]
 
         # Call parent __init__ with default and description
         super().__init__(default=default, description=description)
 
+    @property
+    def raw_choices(self) -> list[Any | Choice]:
+        """Original choices list including Choice objects."""
+        return self._raw_choices.copy()
+
+    @property
+    def choices(self) -> list[Any]:
+        """List of possible values (extracted from Choice objects)."""
+        return self._choices.copy()
+
+    @property
+    def weights(self) -> list[float]:
+        """List of sampling weights for each choice."""
+        return self._weights.copy()
+
+    @property
+    def probs(self) -> list[float]:
+        """List of normalized probabilities for each choice."""
+        return self._probs.copy()
+
     def contains(self, other: Space) -> bool:
-        """Check if another categorical space fits within this space's choices."""
+        """Check if another space is contained within this space.
+
+        Args:
+            other: Another space to check.
+
+        Returns:
+            True if all choices in other are present in this space.
+        """
         if not isinstance(other, Space):
             return False
-
         if not isinstance(other, CategoricalSpace):
             return False
 
         # Check if all choices in other are in self
-        return all(choice in self.choices for choice in other.choices)
+        return all(choice in self._choices for choice in other._choices)
 
     def validate(self, value: Any) -> Any:
-        """
-        Validate that a value is one of the allowed choices.
-
-        For nested Config types, checks if value is an instance of that type.
-        For regular values, checks equality.
+        """Validate that a value is one of the allowed choices.
 
         Args:
             value: The value to validate.
@@ -161,14 +213,15 @@ class CategoricalSpace(Space[Any]):
             The validated value.
 
         Raises:
-            ValueError: If value is not in the allowed choices.
+            ValueError: If the value is not in the allowed choices.
+            TypeError: If the value is not comparable.
         """
         from spax.config import Config
 
         field = self.field_name or "value"
 
         # Check each choice
-        for choice in self.choices:
+        for choice in self._choices:
             # For Config types, check if value is an instance
             if isinstance(choice, type) and issubclass(choice, Config):
                 if isinstance(value, choice):
@@ -183,25 +236,25 @@ class CategoricalSpace(Space[Any]):
                     return value
 
         raise ValueError(
-            f"{field}: Value {value!r} not in allowed choices {self.choices}"
+            f"{field}: Value {value!r} not in allowed choices {self._choices}"
         )
 
     @classmethod
     def __get_pydantic_core_schema__(
         cls, source_type: Any, handler: GetCoreSchemaHandler
     ) -> CoreSchema:
-        """Provide Pydantic schema for any-type validation."""
+        """Provide Pydantic schema for categorical validation."""
         return core_schema.no_info_after_validator_function(
             lambda x: x, core_schema.any_schema()
         )
 
     def __repr__(self) -> str:
-        """Return a string representation."""
-        parts = [f"choices={self.choices}"]
+        """Return a string representation of this space."""
+        parts = [f"choices={self._choices}"]
 
         # Only show probs if they're not all equal (i.e., weights were specified)
-        if len(set(self.probs)) > 1:
-            parts.append(f"probs={self.probs}")
+        if len(set(self._probs)) > 1:
+            parts.append(f"probs={self._probs}")
 
         if self.default is not UNSET:
             parts.append(f"default={self.default!r}")
@@ -217,18 +270,32 @@ def Categorical(
     default: Any | _Unset = UNSET,
     description: str | None = None,
 ) -> Any:
-    """
-    Create a categorical search space (type-checker friendly).
+    """Factory function for creating a CategoricalSpace.
 
-    This function returns Any to satisfy type checkers when used as:
-        activation: str = Categorical(["relu", "gelu"])
+    This is the primary user-facing API for defining categorical parameter spaces.
 
     Args:
-        choices: List of possible values or Choice objects.
-        default: Default value to use when not specified. Must be one of the choices.
-        description: Human-readable description of this parameter.
+        choices: List of possible values or Choice objects with weights.
+        default: Default choice value.
+        description: Parameter description.
 
     Returns:
         A CategoricalSpace instance.
+
+    Examples:
+        >>> import spax as sp
+        >>>
+        >>> # Simple choices
+        >>> optimizer = sp.Categorical(["adam", "sgd", "rmsprop"])
+
+        >>> # Weighted choices
+        >>> optimizer = sp.Categorical([
+        ...     sp.Choice("adam", weight=2.0),
+        ...     "sgd",  # Implicitly weight=1.0
+        ...     "rmsprop"
+        ... ])
+
+        >>> # With default
+        >>> activation = sp.Categorical(["relu", "gelu", "silu"], default="relu")
     """
     return CategoricalSpace(choices=choices, default=default, description=description)

@@ -1,3 +1,10 @@
+"""Config nodes for nested configuration structures.
+
+This module provides ConfigNode, which represents a Config class in the
+node tree. ConfigNodes manage child nodes for all fields and handle
+validation, sampling, and override application for entire configurations.
+"""
+
 from collections.abc import Generator
 import hashlib
 from typing import Any, Self
@@ -19,46 +26,113 @@ from .spaces import CategoricalNode, ConditionalNode, NumberNode, SpaceNode
 
 
 class ConfigNode(Node):
+    """Node representing a Config class with all its fields.
+
+    ConfigNode is the root of the node tree for a Config class. It manages:
+    - Child nodes for each field (spaces, fixed values, nested configs)
+    - Field ordering based on dependencies (for ConditionalSpace)
+    - Validation of entire configurations
+    - Sampling with proper dependency ordering
+    - Override application to all fields
+
+    The node tree is built automatically when a Config class is defined and
+    stored in the class's _node class variable.
+
+    Attributes:
+        children: Dict mapping field names to their child nodes.
+        field_order: List of field names in dependency order.
+
+    Examples:
+        >>> import spax as sp
+        >>>
+        >>> class MyConfig(sp.Config):
+        ...     learning_rate: float = sp.Float(ge=1e-5, le=1e-1)
+        ...     num_layers: int = sp.Int(ge=1, le=10)
+        ...     optimizer: str = sp.Categorical(["adam", "sgd"])
+        >>>
+        >>> # Node tree is built automatically
+        >>> node = MyConfig._node
+        >>> print(node.get_parameter_names())
+        >>> # ['MyConfig.learning_rate', 'MyConfig.num_layers', 'MyConfig.optimizer']
+    """
+
     def __init__(self, config_class: type, *, init_empty: bool = False) -> None:
+        """Initialize a ConfigNode.
+
+        Args:
+            config_class: The Config class this node represents.
+            init_empty: If True, don't populate children (used for cloning).
+
+        Raises:
+            TypeError: If config_class is not a Config subclass.
+        """
         self._config_class = config_class
         self._children: dict[str, Node] = {}
         self._field_order: list[str] = []
+
         if not init_empty:
             self._populate()
             self._validate_and_order_children()
 
+    @property
+    def config_class(self) -> type:
+        """The Config class this node represents."""
+        return self._config_class
+
+    @property
+    def children(self) -> dict[str, Node]:
+        """Dict mapping field names to their child nodes."""
+        return self._children.copy()
+
+    @property
+    def field_order(self) -> list[str]:
+        """List of field names in dependency order."""
+        return self._field_order.copy()
+
     def _populate(self) -> None:
+        """Populate child nodes from the Config class's fields.
+
+        This method examines each field in the Config class and creates
+        the appropriate node type (SpaceNode, FixedNode, or ConfigNode).
+
+        Raises:
+            ValueError: If a field cannot be processed.
+            TypeError: If config_class is not a Config subclass.
+        """
         from spax.config import Config
 
         if not isinstance(self._config_class, type):
             raise TypeError(
                 f"config_class must be a type, got {type(self._config_class).__name__}"
             )
-
         if not issubclass(self._config_class, Config):
             raise TypeError(
                 f"config_class must be a Config class, got {type(self._config_class).__name__}"
             )
 
         def _get_space_node(space: Space) -> Node:
+            """Convert a Space to the appropriate SpaceNode type."""
             if isinstance(space, NumberSpace):
                 return NumberNode(space)
             elif isinstance(space, CategoricalSpace):
                 # Simplify single-choice categorical spaces
                 if len(space.choices) == 1:
                     single_choice = space.choices[0]
-                    # If it's a Config type, remove the space entirely
+                    # If it's a Config type, use its node directly
                     if isinstance(single_choice, type) and issubclass(
                         single_choice, Config
                     ):
                         return single_choice._node
                     else:
+                        # Simple value -> FixedNode
                         return FixedNode(default=single_choice)
                 else:
                     return CategoricalNode(space)
             else:
+                # ConditionalSpace
                 return ConditionalNode(space)
 
+        # Check for parent node to inherit fields
         parent_node: ConfigNode | None = None
         if self._config_class.__mro__[1:2]:
             parent_class = self._config_class.__mro__[1]
@@ -71,8 +145,9 @@ class ConfigNode(Node):
             ):
                 parent_node = parent_class._node
 
+        # Process each field
         for field_name, field_info in self._config_class.model_fields.items():
-            # If the field has declared space:
+            # Case 1: Field has declared space
             if isinstance(field_info.default, Space):
                 space = field_info.default
                 if space.description:
@@ -80,12 +155,13 @@ class ConfigNode(Node):
                 node = _get_space_node(space)
                 self._children[field_name] = node
             else:
+                # Case 2: Try to infer space from annotation
                 inferred_space = infer_space_from_field_info(field_info)
                 if inferred_space is not None:
                     inferred_space.field_name = field_name
                     node = _get_space_node(inferred_space)
                     self._children[field_name] = node
-                # Check if value is fixed:
+                # Case 3: Fixed value (has default or default_factory)
                 elif field_info.default is not PydanticUndefined:
                     self._children[field_name] = FixedNode(default=field_info.default)
                 elif field_info.default_factory is not None:
@@ -93,11 +169,12 @@ class ConfigNode(Node):
                         default_factory=field_info.default_factory
                     )
                     field_info.default_factory = None
-                # Nested Config case
+                # Case 4: Nested Config
                 elif isinstance(field_info.annotation, type) and issubclass(
                     field_info.annotation, Config
                 ):
                     self._children[field_name] = field_info.annotation._node
+                # Case 5: Inherited from parent
                 elif parent_node is not None and field_name in parent_node._children:
                     self._children[field_name] = parent_node._children[field_name]
                 else:
@@ -106,10 +183,21 @@ class ConfigNode(Node):
                         " a) be a config, b) have declared space, c) have an inferable"
                         " space annotation, d) have a default value or factory."
                     )
+
+            # Clear Pydantic defaults to avoid conflicts
             field_info.default = PydanticUndefined
             field_info.default_factory = None
 
     def _validate_and_order_children(self) -> None:
+        """Validate dependencies and order fields topologically.
+
+        This ensures that fields are processed in the correct order, with
+        dependencies coming before dependents. Uses Kahn's algorithm for
+        topological sorting.
+
+        Raises:
+            ValueError: If there are circular dependencies or unknown dependencies.
+        """
         if not self._children:
             return
 
@@ -175,6 +263,21 @@ class ConfigNode(Node):
         self._field_order = ordered
 
     def validate_spaces(self, data: dict[str, Any]) -> dict[str, Any]:
+        """Validate all fields in a data dictionary.
+
+        This method validates fields in dependency order, ensuring that
+        conditional fields can evaluate their conditions properly.
+
+        Args:
+            data: Dictionary of field values to validate.
+
+        Returns:
+            Dictionary of validated values.
+
+        Raises:
+            ValueError: If validation fails for any field.
+            RuntimeError: If a required field is missing.
+        """
         if not isinstance(data, dict):
             raise ValueError(f"Got {data} which is {type(data).__name__}")
 
@@ -183,13 +286,13 @@ class ConfigNode(Node):
         # Create a temporary object to hold values for condition evaluation
         temp_obj = type("TempConfig", (), {})()
 
-        # Get ordered children and validate in dependency order
+        # Validate in dependency order
         for field_name, field_node in self._config_class._node.ordered_children():
             # Find the value
             if field_name in data:
                 value = data[field_name]
             else:
-                # If field not in data, try to use default
+                # Try to use default
                 if isinstance(field_node, FixedNode):
                     value = field_node.get_default()
                 elif (
@@ -215,7 +318,7 @@ class ConfigNode(Node):
                         "in the data and has no default value"
                     )
 
-            # Validate it
+            # Validate the value
             if isinstance(field_node, SpaceNode):
                 space = field_node.space
                 if isinstance(space, ConditionalSpace):
@@ -237,7 +340,7 @@ class ConfigNode(Node):
             validated[field_name] = value
             setattr(temp_obj, field_name, value)
 
-        # Add any extra fields and leave validation to pydantic
+        # Add any extra fields (let Pydantic handle validation)
         for name, value in data.items():
             if name not in validated:
                 validated[name] = value
@@ -245,22 +348,43 @@ class ConfigNode(Node):
         return validated
 
     def get_child(self, child_name: str) -> Node | None:
+        """Get a child node by name.
+
+        Args:
+            child_name: Name of the child field.
+
+        Returns:
+            The child node, or None if not found.
+        """
         return self._children.get(child_name)
 
     def ordered_children(self) -> Generator[tuple[str, Node], None, None]:
+        """Iterate over children in dependency order.
+
+        Yields:
+            Tuples of (field_name, node) in dependency order.
+        """
         for field_name in self._field_order:
             yield field_name, self._children[field_name]
 
     def apply_override(self, override: Any) -> Self:
-        """Apply overrides to config children.
+        """Apply overrides to child fields.
 
-        Override must be a dict where keys are field names and values are
-        the overrides to apply to those fields.
+        Args:
+            override: Dict mapping field names to their overrides.
+
+        Returns:
+            New ConfigNode with overrides applied.
+
+        Raises:
+            ValueError: If override references unknown fields or is empty.
+            TypeError: If override is not a dict.
         """
         if not isinstance(override, dict):
             raise TypeError(
                 f"ConfigNode override must be a dict, got {type(override).__name__}"
             )
+
         if not override:
             raise ValueError("Override dict cannot be empty")
 
@@ -292,13 +416,13 @@ class ConfigNode(Node):
         return new_node
 
     def get_parameter_names(self, prefix: str = "") -> list[str]:
-        """Return all parameter names from this config's children.
+        """Get all parameter names in this config and nested configs.
 
         Args:
-            prefix: The hierarchical path prefix (e.g., "ModelConfig.encoder_config")
+            prefix: Prefix to prepend to parameter names.
 
         Returns:
-            List of all tunable parameter names in dependency order.
+            List of fully-qualified parameter names.
         """
         if prefix:
             prefix = f"{prefix}::{self._config_class.__name__}"
@@ -306,25 +430,26 @@ class ConfigNode(Node):
             prefix = self._config_class.__name__
 
         names = []
-
         for field_name, child_node in self.ordered_children():
             # Build the prefix for this child
             child_prefix = f"{prefix}.{field_name}"
-
             # Get parameter names from child
             names.extend(child_node.get_parameter_names(child_prefix))
 
         return names
 
     def sample(self, sampler: Any, prefix: str = "") -> Any:
-        """Sample values for all fields in dependency order.
+        """Sample a complete configuration.
+
+        Samples all fields in dependency order, ensuring that conditional
+        fields can evaluate their conditions.
 
         Args:
-            sampler: Sampler instance
-            prefix: Parameter name prefix (usually the config class name)
+            sampler: A Sampler instance.
+            prefix: Prefix for parameter names.
 
         Returns:
-            Dictionary of sampled field values
+            A Config instance with sampled values.
         """
         from .spaces import ConditionalNode
 
@@ -356,7 +481,11 @@ class ConfigNode(Node):
         return self._config_class.model_validate(sampled_values)
 
     def get_signature(self) -> str:
-        """Get signature for config node."""
+        """Get a signature representing this config's structure.
+
+        Returns:
+            Signature string including all field signatures.
+        """
         # Build signatures for all fields in order
         field_sigs = []
         for field_name, child_node in self.ordered_children():
@@ -366,16 +495,24 @@ class ConfigNode(Node):
         return f"{self._config_class.__name__}({', '.join(field_sigs)})"
 
     def get_space_hash(self) -> str:
+        """Get a SHA256 hash of the search space structure.
+
+        This hash changes when the search space structure changes, allowing
+        detection of configuration changes between experiments.
+
+        Returns:
+            Hexadecimal hash string.
+        """
         signature = self.get_signature()
         return hashlib.sha256(signature.encode()).hexdigest()
 
     def get_override_template(self) -> dict[str, Any]:
-        """Get override template for config node.
+        """Get a template showing the override structure.
 
-        Returns a dict with all field names as keys and their override templates as values.
+        Returns:
+            Dict showing the nested override structure for all fields.
         """
         template = {}
-
         for field_name, child_node in self.ordered_children():
             child_template = child_node.get_override_template()
             if child_template is not None:

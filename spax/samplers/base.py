@@ -1,13 +1,36 @@
+"""Base classes for parameter samplers.
+
+This module defines the abstract base class for samplers that generate
+parameter values from search spaces. Samplers provide a unified interface
+for different sampling strategies (random, Optuna, etc.).
+"""
+
 from abc import ABC, abstractmethod
 from typing import Any, Literal
 
 
 class Sampler(ABC):
-    """Abstract base class for samplers that suggest parameter values."""
+    """Abstract base class for all samplers.
+
+    A Sampler generates parameter values from search spaces. It provides
+    methods for sampling integers, floats, and categorical values, and
+    maintains a record of all sampled values.
+
+    Samplers are used internally by Config.random() and can be implemented
+    for different sampling strategies (random, Bayesian optimization, etc.).
+
+    Attributes:
+        record: Dictionary mapping parameter names to their sampled values.
+    """
 
     @property
     @abstractmethod
     def record(self) -> dict[str, Any]:
+        """Get a copy of all sampled parameter values.
+
+        Returns:
+            Dictionary mapping parameter names to their sampled values.
+        """
         pass
 
     @abstractmethod
@@ -20,18 +43,18 @@ class Sampler(ABC):
         high_inclusive: bool,
         distribution: Literal["log", "uniform"],
     ) -> int:
-        """Suggest an integer value.
+        """Sample an integer value from a range.
 
         Args:
-            name: Parameter name
-            low: Lower bound
-            high: Upper bound
-            low_inclusive: Whether lower bound is inclusive
-            high_inclusive: Whether upper bound is inclusive
-            distribution: Distribution type
+            name: Parameter name for tracking.
+            low: Lower bound of the range.
+            high: Upper bound of the range.
+            low_inclusive: Whether the lower bound is inclusive.
+            high_inclusive: Whether the upper bound is inclusive.
+            distribution: Sampling distribution ('uniform' or 'log').
 
         Returns:
-            Suggested integer value
+            Sampled integer value within the specified range.
         """
         pass
 
@@ -45,18 +68,18 @@ class Sampler(ABC):
         high_inclusive: bool,
         distribution: Literal["log", "uniform"],
     ) -> float:
-        """Suggest a float value.
+        """Sample a float value from a range.
 
         Args:
-            name: Parameter name
-            low: Lower bound
-            high: Upper bound
-            low_inclusive: Whether lower bound is inclusive
-            high_inclusive: Whether upper bound is inclusive
-            distribution: Distribution type
+            name: Parameter name for tracking.
+            low: Lower bound of the range.
+            high: Upper bound of the range.
+            low_inclusive: Whether the lower bound is inclusive.
+            high_inclusive: Whether the upper bound is inclusive.
+            distribution: Sampling distribution ('uniform' or 'log').
 
         Returns:
-            Suggested float value
+            Sampled float value within the specified range.
         """
         pass
 
@@ -67,14 +90,15 @@ class Sampler(ABC):
         choices: list[Any],
         weights: list[float],
     ) -> Any:
-        """Suggest a categorical choice.
+        """Sample a categorical value from choices.
 
         Args:
-            name: Parameter name
-            choices: List of possible choices
-            weights: Probability weights for each choice
+            name: Parameter name for tracking.
+            choices: List of possible values to choose from.
+            weights: List of weights for each choice (must sum to > 0).
+                Higher weights increase selection probability.
 
         Returns:
-            Suggested choice from the list
+            One of the choices, selected according to the weights.
         """
         pass

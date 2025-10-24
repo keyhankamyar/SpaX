@@ -1,26 +1,33 @@
-"""
-Numeric search spaces for continuous and discrete parameters.
+"""Numeric search spaces for continuous and discrete parameters.
 
-This module provides Float and Int spaces with support for
-different distributions and boundary conditions.
+This module provides FloatSpace and IntSpace for defining numeric parameter
+ranges with inclusive/exclusive bounds and different sampling distributions.
 """
 
-from typing import Any, Literal, TypeAlias
+from typing import Any, Literal
 
 from pydantic import GetCoreSchemaHandler
 from pydantic_core import CoreSchema, core_schema
 
 from .base import UNSET, Space, _Unset
 
-BoundsType: TypeAlias = Literal["none", "low", "high", "both"]
-
 
 class NumberSpace(Space[float]):
-    """
-    Abstract base class for numeric (float/int) search spaces.
+    """Abstract base class for numeric search spaces.
 
-    Provides common functionality for bounded numeric ranges with
-    different sampling distributions and boundary inclusion rules.
+    NumberSpace handles the common logic for both float and integer spaces,
+    including bound validation, inclusivity handling, and distribution types.
+
+    Attributes:
+        low: Lower bound of the range.
+        high: Upper bound of the range.
+        low_inclusive: Whether the lower bound is inclusive.
+        high_inclusive: Whether the upper bound is inclusive.
+        distribution: Sampling distribution ('uniform' or 'log').
+        gt: Greater than bound (if specified).
+        ge: Greater than or equal bound (if specified).
+        lt: Less than bound (if specified).
+        le: Less than or equal bound (if specified).
     """
 
     def __init__(
@@ -34,20 +41,21 @@ class NumberSpace(Space[float]):
         default: float | int | _Unset = UNSET,
         description: str | None = None,
     ) -> None:
-        """
-        Initialize a numeric space.
+        """Initialize a NumberSpace with bounds and distribution.
 
         Args:
-            default: Default value to use when not specified.
             gt: Greater than (exclusive lower bound).
             ge: Greater than or equal (inclusive lower bound).
             lt: Less than (exclusive upper bound).
             le: Less than or equal (inclusive upper bound).
-            distribution: Sampling distribution ("uniform" or "log").
-            description: Human-readable description of this parameter.
+            distribution: Sampling distribution - 'uniform' for linear sampling,
+                'log' for logarithmic sampling (useful for learning rates, etc.).
+            default: Default value for this space.
+            description: Human-readable description.
 
         Raises:
-            ValueError: If bounds are not properly specified or invalid.
+            ValueError: If bounds are invalid or inconsistent.
+            TypeError: If distribution is not 'uniform' or 'log'.
         """
         # Validate that exactly one lower bound is specified
         lower_bounds = [gt, ge]
@@ -87,16 +95,17 @@ class NumberSpace(Space[float]):
         )
         assert low < high, f"lower bound ({low}) must be less than upper bound ({high})"
 
-        self.low = float(low)
-        self.high = float(high)
-        self.low_inclusive = low_inclusive
-        self.high_inclusive = high_inclusive
+        # Store as private attributes
+        self._low = float(low)
+        self._high = float(high)
+        self._low_inclusive = low_inclusive
+        self._high_inclusive = high_inclusive
 
-        # Store original bound specifications for repr
-        self.gt = gt
-        self.ge = ge
-        self.lt = lt
-        self.le = le
+        # Store original bound specifications for repr (private)
+        self._gt = gt
+        self._ge = ge
+        self._lt = lt
+        self._le = le
 
         # Handle distribution specification
         if not isinstance(distribution, str):
@@ -109,54 +118,109 @@ class NumberSpace(Space[float]):
                 f"Unknown distribution '{distribution}'. Expected 'uniform' or 'log'."
             )
         if distribution == "log" and (
-            self.low < 0 or (self.low_inclusive and self.low == 0)
+            self._low < 0 or (self._low_inclusive and self._low == 0)
         ):
             raise ValueError(
-                f"Low must be larger than 0 when using log distribution. Got {self.low}"
+                f"Low must be larger than 0 when using log distribution. Got {self._low}"
             )
 
-        self.distribution = distribution
+        self._distribution = distribution
 
         # Call parent __init__ with default and description
         super().__init__(default=default, description=description)
 
+    # Public read-only properties for encapsulation
+    @property
+    def low(self) -> float:
+        """Lower bound of the numeric range."""
+        return self._low
+
+    @property
+    def high(self) -> float:
+        """Upper bound of the numeric range."""
+        return self._high
+
+    @property
+    def low_inclusive(self) -> bool:
+        """Whether the lower bound is inclusive."""
+        return self._low_inclusive
+
+    @property
+    def high_inclusive(self) -> bool:
+        """Whether the upper bound is inclusive."""
+        return self._high_inclusive
+
+    @property
+    def distribution(self) -> Literal["uniform", "log"]:
+        """Sampling distribution ('uniform' or 'log')."""
+        return self._distribution
+
+    @property
+    def gt(self) -> float | None:
+        """Greater than (exclusive) lower bound, if specified."""
+        return self._gt
+
+    @property
+    def ge(self) -> float | None:
+        """Greater than or equal (inclusive) lower bound, if specified."""
+        return self._ge
+
+    @property
+    def lt(self) -> float | None:
+        """Less than (exclusive) upper bound, if specified."""
+        return self._lt
+
+    @property
+    def le(self) -> float | None:
+        """Less than or equal (inclusive) upper bound, if specified."""
+        return self._le
+
     def contains(self, other: Space) -> bool:
-        """Check if another numeric space fits within this space's bounds."""
+        """Check if another space is contained within this space.
+
+        Args:
+            other: Another space to check.
+
+        Returns:
+            True if the other space's range is within this space's range.
+        """
         if not isinstance(other, Space):
             return False
-
         if type(self) is not type(other):
             return False
-
         if not isinstance(other, NumberSpace):
             return False
 
-        if self.distribution != other.distribution:
+        # Must have same distribution
+        if self._distribution != other._distribution:
             return False
 
-        if other.low < self.low:
+        # Check if other's range is within our range
+        if other._low < self._low:
+            return False
+        if other._high > self._high:
             return False
 
-        if other.high > self.high:
-            return False
-
-        if (other.low == self.low) and (other.low_inclusive and not self.low_inclusive):
+        # Handle boundary inclusivity edge cases
+        if (other._low == self._low) and (
+            other._low_inclusive and not self._low_inclusive
+        ):
             return False
 
         return not (
-            other.high == self.high
-            and (other.high_inclusive and not self.high_inclusive)
+            other._high == self._high
+            and (other._high_inclusive and not self._high_inclusive)
         )
 
     def _check_bounds(self, value: float) -> None:
-        """
-        Check if a value satisfies the boundary conditions.
+        """Validate that a value is within the space's bounds.
 
         Args:
             value: The value to check.
 
         Raises:
-            ValueError: If the value violates boundary constraints.
+            ValueError: If the value is outside the bounds.
+            RuntimeError: If field_name is not set.
         """
         if self.field_name is None:
             raise RuntimeError(
@@ -167,37 +231,37 @@ class NumberSpace(Space[float]):
         field = self.field_name
 
         # Check lower bound
-        if self.low_inclusive:
-            if value < self.low:
-                raise ValueError(f"{field}: Value {value} must be >= {self.low}")
+        if self._low_inclusive:
+            if value < self._low:
+                raise ValueError(f"{field}: Value {value} must be >= {self._low}")
         else:
-            if value <= self.low:
-                raise ValueError(f"{field}: Value {value} must be > {self.low}")
+            if value <= self._low:
+                raise ValueError(f"{field}: Value {value} must be > {self._low}")
 
         # Check upper bound
-        if self.high_inclusive:
-            if value > self.high:
-                raise ValueError(f"{field}: Value {value} must be <= {self.high}")
+        if self._high_inclusive:
+            if value > self._high:
+                raise ValueError(f"{field}: Value {value} must be <= {self._high}")
         else:
-            if value >= self.high:
-                raise ValueError(f"{field}: Value {value} must be < {self.high}")
+            if value >= self._high:
+                raise ValueError(f"{field}: Value {value} must be < {self._high}")
 
     def __repr__(self) -> str:
-        """Return a detailed string representation."""
+        """Return a string representation of this space."""
         parts = []
 
-        # Add bounds
-        if self.gt is not None:
-            parts.append(f"gt={self.gt}")
-        if self.ge is not None:
-            parts.append(f"ge={self.ge}")
-        if self.lt is not None:
-            parts.append(f"lt={self.lt}")
-        if self.le is not None:
-            parts.append(f"le={self.le}")
+        # Add bounds using original specifications
+        if self._gt is not None:
+            parts.append(f"gt={self._gt}")
+        if self._ge is not None:
+            parts.append(f"ge={self._ge}")
+        if self._lt is not None:
+            parts.append(f"lt={self._lt}")
+        if self._le is not None:
+            parts.append(f"le={self._le}")
 
         # Add distribution
-        parts.append(f"distribution='{self.distribution.__class__.__name__}'")
+        parts.append(f"distribution='{self._distribution}'")
 
         # Add default and description from parent
         if self.default is not UNSET:
@@ -209,28 +273,28 @@ class NumberSpace(Space[float]):
 
 
 class FloatSpace(NumberSpace):
-    """
-    Search space for continuous floating-point parameters.
+    """Search space for floating-point parameters.
 
-    Supports uniform and logarithmic distributions with flexible
-    boundary inclusion rules.
+    FloatSpace defines a continuous range of floating-point values with
+    configurable bounds and sampling distribution.
 
-    Example:
-        >>> learning_rate: float = Float(1e-5, 1e-1, "log", "both")
+    Examples:
+        >>> space = FloatSpace(ge=0.0, le=1.0)  # Range [0.0, 1.0]
+        >>> space = FloatSpace(gt=0.0, lt=1.0)  # Range (0.0, 1.0)
+        >>> space = FloatSpace(ge=1e-5, le=1.0, distribution='log')  # Log scale
     """
 
     def validate(self, value: Any) -> float:
-        """
-        Validate and coerce a value to float.
+        """Validate that a value is a valid float within bounds.
 
         Args:
             value: The value to validate.
 
         Returns:
-            The validated float value.
+            The value as a float.
 
         Raises:
-            ValueError: If value is not numeric or violates bounds.
+            ValueError: If the value is not numeric or outside bounds.
         """
         field = self.field_name or "value"
 
@@ -254,14 +318,15 @@ class FloatSpace(NumberSpace):
 
 
 class IntSpace(NumberSpace):
-    """
-    Search space for discrete integer parameters.
+    """Search space for integer parameters.
 
-    Supports uniform and logarithmic distributions (sampled then rounded)
-    with flexible boundary inclusion rules.
+    IntSpace defines a discrete range of integer values with configurable
+    bounds and sampling distribution.
 
-    Example:
-        >>> num_layers: int = Int(ge=1, le=10)
+    Examples:
+        >>> space = IntSpace(ge=1, le=10)  # Range [1, 10]
+        >>> space = IntSpace(gt=0, lt=100)  # Range (0, 100) = [1, 99]
+        >>> space = IntSpace(ge=1, le=1000, distribution='log')  # Log scale
     """
 
     def __init__(
@@ -275,20 +340,20 @@ class IntSpace(NumberSpace):
         default: int | _Unset = UNSET,
         description: str | None = None,
     ) -> None:
-        """
-        Initialize an integer space.
+        """Initialize an IntSpace with integer bounds.
 
         Args:
-            default: Default value to use when not specified.
-            gt: Greater than (exclusive lower bound, must be integer).
-            ge: Greater than or equal (inclusive lower bound, must be integer).
-            lt: Less than (exclusive upper bound, must be integer).
-            le: Less than or equal (inclusive upper bound, must be integer).
-            distribution: Sampling distribution ("uniform" or "log").
-            description: Human-readable description of this parameter.
+            gt: Greater than (exclusive lower bound).
+            ge: Greater than or equal (inclusive lower bound).
+            lt: Less than (exclusive upper bound).
+            le: Less than or equal (inclusive upper bound).
+            distribution: Sampling distribution.
+            default: Default integer value.
+            description: Human-readable description.
 
         Raises:
-            TypeError: If bounds are not integers.
+            TypeError: If bounds or default are not integers.
+            ValueError: If bounds are invalid.
         """
         # Validate that bounds are integers
         for name, value in [("gt", gt), ("ge", ge), ("lt", lt), ("le", le)]:
@@ -316,21 +381,20 @@ class IntSpace(NumberSpace):
         )
 
         # Store as integers for cleaner representation
-        self.low = int(self.low)
-        self.high = int(self.high)
+        self._low = int(self._low)
+        self._high = int(self._high)
 
     def validate(self, value: Any) -> int:
-        """
-        Validate and coerce a value to integer.
+        """Validate that a value is a valid integer within bounds.
 
         Args:
             value: The value to validate.
 
         Returns:
-            The validated integer value.
+            The value as an integer.
 
         Raises:
-            ValueError: If value is not an integer or violates bounds.
+            ValueError: If the value is not an integer or outside bounds.
         """
         field = self.field_name or "value"
 
@@ -367,23 +431,27 @@ def Float(
     default: float | _Unset = UNSET,
     description: str | None = None,
 ) -> Any:
-    """
-    Create a float search space (type-checker friendly).
+    """Factory function for creating a FloatSpace.
 
-    This function returns Any to satisfy type checkers when used as:
-        learning_rate: float = Float(ge=0.001, lt=0.1)
+    This is the primary user-facing API for defining float parameter spaces.
 
     Args:
         gt: Greater than (exclusive lower bound).
         ge: Greater than or equal (inclusive lower bound).
         lt: Less than (exclusive upper bound).
         le: Less than or equal (inclusive upper bound).
-        distribution: "uniform" or "log".
-        default: Default value to use when not specified.
-        description: Human-readable description of this parameter.
+        distribution: Sampling distribution ('uniform' or 'log').
+        default: Default value.
+        description: Parameter description.
 
     Returns:
         A FloatSpace instance.
+
+    Examples:
+        >>> import spax as sp
+        >>>
+        >>> learning_rate = sp.Float(ge=1e-5, le=1e-1, distribution='log')
+        >>> temperature = sp.Float(gt=0.0, lt=2.0, default=1.0)
     """
     return FloatSpace(
         gt=gt,
@@ -406,23 +474,27 @@ def Int(
     default: int | _Unset = UNSET,
     description: str | None = None,
 ) -> Any:
-    """
-    Create an integer search space (type-checker friendly).
+    """Factory function for creating an IntSpace.
 
-    This function returns Any to satisfy type checkers when used as:
-        num_layers: int = Int(ge=1, le=10)
+    This is the primary user-facing API for defining integer parameter spaces.
 
     Args:
         gt: Greater than (exclusive lower bound).
         ge: Greater than or equal (inclusive lower bound).
         lt: Less than (exclusive upper bound).
         le: Less than or equal (inclusive upper bound).
-        distribution: "uniform" or "log".
-        default: Default value to use when not specified.
-        description: Human-readable description of this parameter.
+        distribution: Sampling distribution ('uniform' or 'log').
+        default: Default integer value.
+        description: Parameter description.
 
     Returns:
         An IntSpace instance.
+
+    Examples:
+        >>> import spax as sp
+        >>>
+        >>> num_layers = sp.Int(ge=1, le=10, default=3)
+        >>> batch_size = sp.Int(gt=0, le=512, distribution='log')
     """
     return IntSpace(
         gt=gt,

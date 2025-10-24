@@ -1,7 +1,9 @@
-"""
-Automatic space inference from type annotations and Pydantic Fields.
-This module provides utilities to automatically create Space objects from
-standard Python type hints and Pydantic field definitions.
+"""Factory functions for automatic space inference from type annotations.
+
+This module provides utilities to automatically infer search spaces from
+Python type annotations and Pydantic Field constraints. This enables a more
+concise syntax where users can use standard type hints instead of explicitly
+defining spaces.
 """
 
 from types import UnionType
@@ -21,24 +23,26 @@ def _infer_numeric_space(
     default: Any,
     description: str | None,
 ) -> Space | None:
-    """
-    Infer a numeric space from Pydantic Field metadata.
+    """Infer a numeric space from type annotation and Pydantic constraints.
+
+    Attempts to create a FloatSpace or IntSpace based on the type annotation
+    and any gt/ge/lt/le constraints in the field metadata.
 
     Args:
-        annotation: Either int or float type
-        field_info: Pydantic FieldInfo with metadata
-        default: Default value extracted from field_info
-        description: Description extracted from field_info
+        annotation: The numeric type (int or float).
+        field_info: Pydantic FieldInfo with potential constraints.
+        default: Default value for the space.
+        description: Description for the space.
 
     Returns:
-        FloatSpace or IntSpace if valid metadata exist, None otherwise
+        A FloatSpace or IntSpace if constraints are sufficient, None otherwise.
     """
     gt = None
     ge = None
     lt = None
     le = None
 
-    # Check metadata
+    # Check metadata for constraints
     if hasattr(field_info, "metadata"):
         for constraint in field_info.metadata:
             if hasattr(constraint, "gt"):
@@ -68,14 +72,16 @@ def _infer_numeric_space(
 
 
 def _flatten_union_to_choices(union_args: tuple[Any, ...]) -> list[Any]:
-    """
-    Flatten Union types into a list of choices for Categorical.
+    """Flatten a Union type into a list of choices for categorical space.
 
-    Handles:
-    - Config subclasses → kept as-is
-    - bool → expanded to [True, False]
-    - Literal[...] → expanded to list of literal values
-    - None → kept as-is
+    Extracts all possible values from a Union that can be represented as
+    categorical choices. Handles Literal types, bool, None, and Config types.
+
+    Args:
+        union_args: The arguments from get_args() on a Union type.
+
+    Returns:
+        List of choices if all union members are compatible, empty list otherwise.
     """
     from spax.config import Config
 
@@ -97,7 +103,7 @@ def _flatten_union_to_choices(union_args: tuple[Any, ...]) -> list[Any]:
         # Handle Config subclasses
         elif isinstance(arg, type) and issubclass(arg, Config):
             choices.append(arg)
-        # Unsupported types
+        # Unsupported types - cannot infer
         else:
             return []
 
@@ -105,14 +111,34 @@ def _flatten_union_to_choices(union_args: tuple[Any, ...]) -> list[Any]:
 
 
 def infer_space_from_field_info(field_info: FieldInfo) -> Space | None:
-    """
-    Infer a Space from a Pydantic FieldInfo.
+    """Infer a search space from Pydantic FieldInfo.
+
+    Attempts to automatically create an appropriate Space based on the field's
+    type annotation and constraints. Supports:
+    - Union/| types -> CategoricalSpace
+    - bool -> CategoricalSpace([True, False])
+    - Literal types -> CategoricalSpace
+    - int/float with constraints -> IntSpace/FloatSpace
 
     Args:
-        field_info: Pydantic FieldInfo with constraints
+        field_info: Pydantic FieldInfo containing type annotation and metadata.
 
     Returns:
-        An inferred Space object, or None if inference is not possible
+        An inferred Space if possible, None if inference is not possible.
+
+    Examples:
+        >>> from pydantic import Field
+        >>> from pydantic.fields import FieldInfo
+        >>>
+        >>> # Union inference
+        >>> field = FieldInfo(annotation=Literal["a", "b", "c"])
+        >>> space = infer_space_from_field_info(field)
+        >>> # Returns CategoricalSpace(["a", "b", "c"])
+        >>>
+        >>> # Numeric inference with constraints
+        >>> field = FieldInfo(annotation=int, metadata=[Field(ge=1, le=10)])
+        >>> space = infer_space_from_field_info(field)
+        >>> # Returns IntSpace(ge=1, le=10)
     """
     annotation = field_info.annotation
     origin = get_origin(annotation)
@@ -133,8 +159,10 @@ def infer_space_from_field_info(field_info: FieldInfo) -> Space | None:
     if origin is Union or isinstance(annotation, UnionType):
         union_args = get_args(annotation)
         choices = _flatten_union_to_choices(union_args)
+
         if not choices:
             return None
+
         return Categorical(choices, default=default, description=description)
 
     # Handle bool type
@@ -144,12 +172,15 @@ def infer_space_from_field_info(field_info: FieldInfo) -> Space | None:
     # Handle Literal types
     if origin is Literal:
         choices = list(get_args(annotation))
+
         if not choices:
             return None
+
         return Categorical(choices, default=default, description=description)
 
     # Handle numeric types with Pydantic Field constraints
     if annotation in (int, float):
         return _infer_numeric_space(annotation, field_info, default, description)
 
+    # Cannot infer - return None
     return None
