@@ -1,0 +1,41 @@
+cff-version: 1.2.0
+message: "If you use SpaX in your research or software, please cite it as below."
+title: "SpaX: Declarative search-space definition & exploration (HPO, NAS, configs)"
+type: software
+version: "0.2.0"
+date-released: 2025-10-24
+authors:
+  - family-names: Kamyar
+    given-names: Keyhan
+    email: keyhankamyar@gmail.com
+license: MIT
+repository-code: https://github.com/keyhankamyar/SpaX
+repository-artifact: https://pypi.org/project/spax/
+url: https://github.com/keyhankamyar/SpaX#readme
+keywords:
+  - hyperparameter optimization
+  - HPO
+  - neural architecture search
+  - NAS
+  - search space
+  - configuration
+  - machine learning
+  - AutoML
+abstract: >
+  SpaX is a Python library that makes it easy to define, explore, visualize, and
+  optimize search spaces for machine-learning workflows—covering hyperparameter
+  tuning and architecture choices. It provides a declarative Config API (built on
+  Pydantic v2), conditional parameters, random and Optuna-backed sampling,
+  serialization (JSON/YAML/TOML), and an override system for iterative pruning
+  and expansion of spaces.
+
+preferred-citation:
+  type: software
+  title: "SpaX (v0.2.0)"
+  authors:
+    - family-names: Kamyar
+      given-names: Keyhan
+  version: "0.2.0"
+  date-released: 2025-10-24
+  repository-code: https://github.com/keyhankamyar/SpaX
+  url: https://pypi.org/project/spax/
