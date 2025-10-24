@@ -121,14 +121,13 @@ def infer_space_from_field_info(field_info: FieldInfo) -> Space | None:
     default = UNSET
     description = None
 
-    if field_info is not None:
-        # Handle default value
-        if field_info.default is not PydanticUndefined:
-            default = field_info.default
+    # Handle default value
+    if field_info.default is not PydanticUndefined:
+        default = field_info.default
 
-        # Handle description
-        if field_info.description is not None:
-            description = field_info.description
+    # Handle description
+    if field_info.description is not None:
+        description = field_info.description
 
     # Check for both types.UnionType (|) and typing.Union
     if origin is Union or isinstance(annotation, UnionType):
@@ -150,7 +149,7 @@ def infer_space_from_field_info(field_info: FieldInfo) -> Space | None:
         return Categorical(choices, default=default, description=description)
 
     # Handle numeric types with Pydantic Field constraints
-    if annotation in (int, float) and field_info is not None:
+    if annotation in (int, float):
         return _infer_numeric_space(annotation, field_info, default, description)
 
     return None

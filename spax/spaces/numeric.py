@@ -108,10 +108,45 @@ class NumberSpace(Space[float]):
             raise TypeError(
                 f"Unknown distribution '{distribution}'. Expected 'uniform' or 'log'."
             )
+        if distribution == "log" and (
+            self.low < 0 or (self.low_inclusive and self.low == 0)
+        ):
+            raise ValueError(
+                f"Low must be larger than 0 when using log distribution. Got {self.low}"
+            )
+
         self.distribution = distribution
 
         # Call parent __init__ with default and description
         super().__init__(default=default, description=description)
+
+    def contains(self, other: Space) -> bool:
+        """Check if another numeric space fits within this space's bounds."""
+        if not isinstance(other, Space):
+            return False
+
+        if type(self) is not type(other):
+            return False
+
+        if not isinstance(other, NumberSpace):
+            return False
+
+        if self.distribution != other.distribution:
+            return False
+
+        if other.low < self.low:
+            return False
+
+        if other.high > self.high:
+            return False
+
+        if (other.low == self.low) and (other.low_inclusive and not self.low_inclusive):
+            return False
+
+        return not (
+            other.high == self.high
+            and (other.high_inclusive and not self.high_inclusive)
+        )
 
     def _check_bounds(self, value: float) -> None:
         """

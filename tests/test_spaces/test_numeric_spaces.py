@@ -357,7 +357,7 @@ class TestFloatFactory:
     def test_float_factory_all_parameters(self):
         """Test Float() with all parameters."""
         space = Float(
-            ge=0.0, le=10.0, distribution="log", default=5.0, description="Test"
+            gt=0.0, le=10.0, distribution="log", default=5.0, description="Test"
         )
 
         assert isinstance(space, FloatSpace)

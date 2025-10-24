@@ -83,6 +83,22 @@ class Space(ABC, Generic[T]):
         self.field_name = name
 
     @abstractmethod
+    def contains(self, other: "Space") -> bool:
+        """Check if another space is contained within this space.
+
+        A space contains another if:
+        1. They are the same type of space
+        2. The other space's constraints are more restrictive (fit within this space)
+
+        Args:
+            other: Another space to check
+
+        Returns:
+            True if the other space is contained within this space
+        """
+        pass
+
+    @abstractmethod
     def validate(self, value: Any) -> T:
         """
         Validate and potentially transform a value for this space.

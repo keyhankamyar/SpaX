@@ -136,6 +136,17 @@ class CategoricalSpace(Space[Any]):
         # Call parent __init__ with default and description
         super().__init__(default=default, description=description)
 
+    def contains(self, other: Space) -> bool:
+        """Check if another categorical space fits within this space's choices."""
+        if not isinstance(other, Space):
+            return False
+
+        if not isinstance(other, CategoricalSpace):
+            return False
+
+        # Check if all choices in other are in self
+        return all(choice in self.choices for choice in other.choices)
+
     def validate(self, value: Any) -> Any:
         """
         Validate that a value is one of the allowed choices.

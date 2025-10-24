@@ -11,7 +11,7 @@ from typing import Any
 from pydantic import GetCoreSchemaHandler
 from pydantic_core import CoreSchema, core_schema
 
-from .base import UNSET, Space, _Unset
+from .base import Space
 from .conditions import AttributeCondition
 
 
@@ -69,7 +69,6 @@ class ConditionalSpace(Space[Any]):
         *,
         true: Space[Any] | Any,
         false: Space[Any] | Any,
-        default: Any | _Unset = UNSET,
         description: str | None = None,
     ) -> None:
         """
@@ -80,7 +79,6 @@ class ConditionalSpace(Space[Any]):
                 Must be FieldCondition or MultiFieldLambda at the top level.
             true: Space or fixed value used when condition evaluates to True
             false: Space or fixed value used when condition evaluates to False
-            default: Default value for the space
             description: Description of this conditional parameter
 
         Raises:
@@ -103,7 +101,7 @@ class ConditionalSpace(Space[Any]):
         self.false_is_space = isinstance(false, Space)
 
         # Call parent __init__ with default and description
-        super().__init__(default=default, description=description)
+        super().__init__(description=description)
 
     def __set_name__(self, owner: type, name: str) -> None:
         """
@@ -132,6 +130,9 @@ class ConditionalSpace(Space[Any]):
             return self.true_branch
         else:
             return self.false_branch
+
+    def contains(self, other: Space) -> bool:
+        raise NotImplementedError
 
     def validate(self, value: Any) -> Any:
         """
@@ -270,8 +271,6 @@ class ConditionalSpace(Space[Any]):
             f"false={self.false_branch!r}",
         ]
 
-        if self.default is not UNSET:
-            parts.append(f"default={self.default!r}")
         if self.description is not None:
             parts.append(f"description={self.description!r}")
 
@@ -283,7 +282,6 @@ def Conditional(
     *,
     true: Space[Any] | Any,
     false: Space[Any] | Any,
-    default: Any | _Unset = UNSET,
     description: str | None = None,
 ) -> Any:
     """
@@ -296,7 +294,6 @@ def Conditional(
         condition: AttributeCondition determining which branch to activate
         true: Space or value when condition is True
         false: Space or value when condition is False
-        default: Default value
         description: Description of the parameter
 
     Returns:
@@ -345,6 +342,5 @@ def Conditional(
         condition=condition,
         true=true,
         false=false,
-        default=default,
         description=description,
     )

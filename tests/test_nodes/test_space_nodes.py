@@ -8,7 +8,6 @@ from spax.nodes import (
     ConditionalNode,
     FixedNode,
     NumberNode,
-    SpaceNode,
 )
 from spax.spaces import (
     CategoricalSpace,
@@ -18,22 +17,6 @@ from spax.spaces import (
     FloatSpace,
     IntSpace,
 )
-
-
-class TestSpaceNode:
-    """Test base SpaceNode class."""
-
-    def test_creation_with_space(self):
-        """Test SpaceNode creation with a Space."""
-        space = FloatSpace(ge=0.0, le=10.0)
-        node = SpaceNode(space)
-
-        assert node.space is space
-
-    def test_error_with_non_space(self):
-        """Test error when creating with non-Space object."""
-        with pytest.raises(TypeError, match="must be a Space"):
-            SpaceNode("not a space")
 
 
 class TestNumberNode:
@@ -90,9 +73,8 @@ class TestCategoricalNode:
         assert len(node._children) == 3
 
         # All should be FixedNodes
-        for i in range(3):
-            assert isinstance(node._children[i], FixedNode)
-            assert node._children[i].default == space.choices[i]
+        for child in node._children.values():
+            assert isinstance(child, FixedNode)
 
     def test_children_with_config_types(self):
         """Test children created for Config types."""
@@ -110,8 +92,8 @@ class TestCategoricalNode:
         assert len(node._children) == 2
 
         # Children should be ConfigNodes (accessed via Config._node)
-        assert node._children[0] is ConfigA._node
-        assert node._children[1] is ConfigB._node
+        assert node._children["ConfigA"] is ConfigA._node
+        assert node._children["ConfigB"] is ConfigB._node
 
     def test_children_mixed_config_and_values(self):
         """Test children with mix of Config types and values."""
@@ -125,14 +107,14 @@ class TestCategoricalNode:
         assert len(node._children) == 3
 
         # First child is ConfigNode
-        assert node._children[0] is MyConfig._node
+        assert node._children["MyConfig"] is MyConfig._node
 
         # Other children are FixedNodes
-        assert isinstance(node._children[1], FixedNode)
-        assert node._children[1].default == "string"
+        assert isinstance(node._children["string"], FixedNode)
+        assert node._children["string"].default == "string"
 
-        assert isinstance(node._children[2], FixedNode)
-        assert node._children[2].default == 42
+        assert isinstance(node._children["42"], FixedNode)
+        assert node._children["42"].default == 42
 
 
 class TestConditionalNode:

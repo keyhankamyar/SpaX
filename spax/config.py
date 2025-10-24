@@ -11,6 +11,7 @@ from typing import Any, ClassVar, Self, Union, get_args, get_origin
 from pydantic import BaseModel, model_validator
 
 from .nodes import ConfigNode
+from .samplers import RandomSampler
 
 
 def _type_from_annotation(annotation: Any, type_name: str) -> type | None:
@@ -52,9 +53,104 @@ class Config(BaseModel, validate_assignment=True):
         return cls._node.validate_spaces(data)
 
     @classmethod
-    def random(cls) -> Self:
-        # TODO:
-        raise NotImplementedError
+    def get_parameter_names(cls) -> list[str]:
+        """Get all tunable parameter names in this configuration.
+
+        Returns:
+            List of fully qualified parameter names that can be sampled/tuned.
+
+        Example:
+            >>> class MyConfig(Config):
+            ...     x: int = Int(ge=0, le=10)
+            ...     y: float = Float(ge=0.0, le=1.0)
+            >>> MyConfig.get_parameter_names()
+            ['MyConfig.x', 'MyConfig.y']
+        """
+        assert cls._node is not None
+        return cls._node.get_parameter_names()
+
+    @classmethod
+    def get_node(cls, override: dict[str, Any] | None = None) -> Any:
+        """Get the configuration node, optionally with overrides applied.
+
+        This provides access to the internal node structure for advanced operations
+        like getting signatures, hashes, parameter names, etc.
+
+        Args:
+            override: Optional overrides to apply to the search space
+
+        Returns:
+            The ConfigNode, potentially with overrides applied
+
+        Example:
+            >>> class MyConfig(Config):
+            ...     x: int = Int(ge=0, le=10)
+            >>> node = MyConfig.get_node()
+            >>> hash1 = node.get_space_hash()
+            >>>
+            >>> # With overrides
+            >>> node2 = MyConfig.get_node(override={"x": {"ge": 5, "le": 8}})
+            >>> hash2 = node2.get_space_hash()
+            >>> assert hash1 != hash2
+        """
+        assert cls._node is not None
+
+        if override is None:
+            return cls._node
+
+        return cls._node.apply_override(override)
+
+    @classmethod
+    def random(
+        cls, seed: int | None = None, override: dict[str, Any] | None = None
+    ) -> Self:
+        """Generate a random configuration by sampling from the search space.
+
+        Args:
+            seed: Random seed for reproducibility
+            override: Optional overrides to apply before sampling
+
+        Returns:
+            A randomly sampled configuration instance
+
+        Example:
+            >>> class MyConfig(Config):
+            ...     x: int = Int(ge=0, le=10)
+            ...     y: float = Float(ge=0.0, le=1.0)
+            >>> config = MyConfig.random(seed=42)
+            >>> config2 = MyConfig.random(seed=42, override={"x": 5})
+        """
+
+        node = cls.get_node(override)
+
+        # Sample using RandomSampler
+        sampler = RandomSampler(seed=seed)
+        sampled_values = node.sample(sampler)
+
+        # Create and return the config instance
+        return cls.model_validate(sampled_values)
+
+    @classmethod
+    def get_override_template(cls) -> dict[str, Any]:
+        """Get a template dict structure for overrides.
+
+        This returns a dict showing all available fields and their override options.
+        Users can fill this in to create custom overrides.
+
+        Returns:
+            Dict template for overrides
+
+        Example:
+            >>> class MyConfig(Config):
+            ...     x: int = Int(ge=0, le=10)
+            ...     y: str = Categorical(["a", "b", "c"])
+            >>> template = MyConfig.get_override_template()
+            >>> # Fill in the template
+            >>> override = {"x": {"ge": 5, "le": 8}, "y": ["a", "b"]}
+            >>> config = MyConfig.random(override=override)
+        """
+        assert cls._node is not None
+        return cls._node.get_override_template()
 
     def model_dump(self) -> dict[str, Any]:
         """

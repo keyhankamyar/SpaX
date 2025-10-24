@@ -444,14 +444,6 @@ class TestMultiFieldLambdaCondition:
 class TestConditionalSpaceProperties:
     """Test ConditionalSpace properties and metadata."""
 
-    def test_default_value(self):
-        """Test default value handling."""
-        space = ConditionalSpace(
-            condition=FieldCondition("x", EqualsTo(5)), true=10, false=20, default=10
-        )
-
-        assert space.default == 10
-
     def test_no_default(self):
         """Test space without default."""
         space = ConditionalSpace(
@@ -520,10 +512,8 @@ class TestConditionalFactory:
             condition=FieldCondition("mode", EqualsTo("test")),
             true=FloatSpace(ge=0.0, le=10.0),
             false=IntSpace(ge=0, le=100),
-            default=5.0,
             description="Test conditional",
         )
 
         assert isinstance(space, ConditionalSpace)
-        assert space.default == 5.0
         assert space.description == "Test conditional"
