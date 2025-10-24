@@ -5,6 +5,11 @@ from typing import Any, Literal
 class Sampler(ABC):
     """Abstract base class for samplers that suggest parameter values."""
 
+    @property
+    @abstractmethod
+    def record(self) -> dict[str, Any]:
+        pass
+
     @abstractmethod
     def suggest_int(
         self,

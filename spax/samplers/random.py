@@ -15,7 +15,11 @@ class RandomSampler(Sampler):
             seed: Random seed for reproducibility
         """
         self.rng = random.Random(seed)
-        self.record: dict[str, Any] = {}
+        self._record: dict[str, Any] = {}
+
+    @property
+    def record(self) -> dict[str, Any]:
+        return self._record.copy()
 
     def suggest_int(
         self,
@@ -34,16 +38,16 @@ class RandomSampler(Sampler):
             high = high - 1
 
         if distribution == "uniform":
-            self.record[name] = self.rng.randint(low, high)
-            return self.record[name]
+            self._record[name] = self.rng.randint(low, high)
+            return self._record[name]
         elif distribution == "log":
             # Log-uniform sampling
             assert low > 0
             log_low = math.log(low)
             log_high = math.log(high)
             log_value = self.rng.uniform(log_low, log_high)
-            self.record[name] = int(round(math.exp(log_value)))
-            return self.record[name]
+            self._record[name] = int(round(math.exp(log_value)))
+            return self._record[name]
         else:
             raise ValueError(f"Unknown distribution: {distribution}")
 
@@ -63,16 +67,16 @@ class RandomSampler(Sampler):
             high = high - 1e-10
 
         if distribution == "uniform":
-            self.record[name] = self.rng.uniform(low, high)
-            return self.record[name]
+            self._record[name] = self.rng.uniform(low, high)
+            return self._record[name]
         elif distribution == "log":
             # Log-uniform sampling
             assert low > 0
             log_low = math.log(low)
             log_high = math.log(high)
             log_value = self.rng.uniform(log_low, log_high)
-            self.record[name] = math.exp(log_value)
-            return self.record[name]
+            self._record[name] = math.exp(log_value)
+            return self._record[name]
         else:
             raise ValueError(f"Unknown distribution: {distribution}")
 
@@ -83,5 +87,5 @@ class RandomSampler(Sampler):
         weights: list[float],
     ) -> Any:
         """Suggest a random categorical choice."""
-        self.record[name] = self.rng.choices(choices, weights=weights, k=1)[0]
-        return self.record[name]
+        self._record[name] = self.rng.choices(choices, weights=weights, k=1)[0]
+        return self._record[name]

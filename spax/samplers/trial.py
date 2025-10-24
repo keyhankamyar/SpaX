@@ -18,7 +18,11 @@ class TrialSampler(Sampler):
             trial: An optuna.Trial object
         """
         self.trial = trial
-        self.record: dict[str, Any] = {}
+        self._record: dict[str, Any] = {}
+
+    @property
+    def record(self) -> dict[str, Any]:
+        return self._record.copy()
 
     def suggest_int(
         self,
@@ -40,10 +44,10 @@ class TrialSampler(Sampler):
         # Map distribution
         log = distribution == "log"
 
-        self.record[name] = self.trial.suggest_int(
+        self._record[name] = self.trial.suggest_int(
             name=name, low=low, high=high, log=log
         )
-        return self.record[name]
+        return self._record[name]
 
     def suggest_float(
         self,
@@ -63,10 +67,10 @@ class TrialSampler(Sampler):
         # Map distribution
         log = distribution == "log"
 
-        self.record[name] = self.trial.suggest_float(
+        self._record[name] = self.trial.suggest_float(
             name=name, low=low, high=high, log=log
         )
-        return self.record[name]
+        return self._record[name]
 
     def suggest_categorical(
         self,
@@ -80,5 +84,5 @@ class TrialSampler(Sampler):
         so weights are ignored. For weighted sampling, use RandomSampler or
         implement custom sampling logic.
         """
-        self.record[name] = self.trial.suggest_categorical(name=name, choices=choices)
-        return self.record[name]
+        self._record[name] = self.trial.suggest_categorical(name=name, choices=choices)
+        return self._record[name]
