@@ -45,7 +45,7 @@ from typing import Any, ClassVar, Self
 from pydantic import BaseModel, model_validator
 
 from .nodes import ConfigNode
-from .samplers import RandomSampler
+from .samplers import RandomSampler, TrialSampler
 from .utils import type_from_annotation
 
 
@@ -178,6 +178,64 @@ class Config(BaseModel, validate_assignment=True):
         return cls._node.apply_override(override)
 
     @classmethod
+    def sample(cls, sampler: Any, override: dict[str, Any] | None = None) -> Self:
+        """Sample a configuration using a provided sampler.
+
+        This is useful for integration with HPO libraries like Optuna, where
+        you want to use their samplers instead of random sampling.
+
+        Args:
+            sampler: A Sampler instance (e.g., RandomSampler, TrialSampler).
+            override: Optional dictionary of overrides to narrow the search space
+                before sampling. See get_override_template() for structure.
+
+        Returns:
+            A Config instance with sampled values from the provided sampler.
+
+        Examples:
+            >>> import spax as sp
+            >>> import optuna
+            >>>
+            >>> def objective(trial):
+            ...     sampler = sp.TrialSampler(trial)
+            ...     config = MyConfig.sample(sampler)
+            ...     return train_and_evaluate(config)
+            >>>
+            >>> study = optuna.create_study()
+            >>> study.optimize(objective, n_trials=100)
+        """
+        node = cls.get_node(override)
+        sampled_values = node.sample(sampler)
+        return cls.model_validate(sampled_values)
+
+    @classmethod
+    def from_trial(cls, trial: Any, override: dict[str, Any] | None = None) -> Self:
+        """
+        Sample a configuration using a provided Optuna Trial.
+
+        Args:
+            trial: Optuna Trial or FrozenTrial.
+            override: Optional dictionary of overrides to narrow the search space
+                before sampling. See get_override_template() for structure.
+
+        Returns:
+            A Config instance with sampled values from the provided sampler.
+
+        Examples:
+            >>> import spax as sp
+            >>> import optuna
+            >>>
+            >>> def objective(trial):
+            ...     config = MyConfig.from_trial(trial)
+            ...     return train_and_evaluate(config)
+            >>>
+            >>> study = optuna.create_study()
+            >>> study.optimize(objective, n_trials=100)
+        """
+        sampler = TrialSampler(trial)
+        return cls.sample(sampler=sampler, override=override)
+
+    @classmethod
     def random(
         cls, seed: int | None = None, override: dict[str, Any] | None = None
     ) -> Self:
@@ -208,14 +266,10 @@ class Config(BaseModel, validate_assignment=True):
             ...     }
             ... )
         """
-        node = cls.get_node(override)
-
         # Create sampler and sample from the node
         sampler = RandomSampler(seed=seed)
-        sampled_values = node.sample(sampler)
-
         # Validate and return the config instance
-        return cls.model_validate(sampled_values)
+        return cls.sample(sampler, override)
 
     @classmethod
     def get_override_template(cls) -> dict[str, Any]:
