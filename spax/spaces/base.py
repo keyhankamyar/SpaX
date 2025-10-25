@@ -89,7 +89,7 @@ class Space(ABC, Generic[T]):
         self.field_name = name
 
     @abstractmethod
-    def contains(self, other: "Space") -> bool:
+    def contains(self, other: Any) -> bool:
         """Check if another space is a subset of this space.
 
         This is used for validating overrides - an override space must be
@@ -154,7 +154,7 @@ class Space(ABC, Generic[T]):
             # Accessing from class returns the descriptor itself
             return self
         # Accessing from instance returns the stored value
-        return obj.__dict__.get(self.field_name)
+        return obj.__dict__.get(self.field_name)  # type: ignore
 
     def __set__(self, obj: Any, value: T) -> None:
         """Descriptor protocol: set and validate the value on an instance.

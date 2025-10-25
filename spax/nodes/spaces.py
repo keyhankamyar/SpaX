@@ -81,6 +81,7 @@ class NumberNode(SpaceNode):
         Raises:
             TypeError: If space is not a NumberSpace.
         """
+        self._space: NumberSpace
         super().__init__(space)
         if not isinstance(self._space, NumberSpace):
             raise TypeError(
@@ -135,6 +136,7 @@ class NumberNode(SpaceNode):
             "description": self._space.description,
         }
 
+        new_space: Space
         if isinstance(self._space, IntSpace):
             new_space = IntSpace(**kwargs)
         else:
@@ -180,7 +182,7 @@ class NumberNode(SpaceNode):
         space = self._space
 
         if isinstance(space, IntSpace):
-            return sampler.suggest_int(
+            value = sampler.suggest_int(
                 name=prefix,
                 low=space.low,
                 high=space.high,
@@ -189,7 +191,7 @@ class NumberNode(SpaceNode):
                 distribution=space.distribution,
             )
         else:  # FloatSpace
-            return sampler.suggest_float(
+            value = sampler.suggest_float(
                 name=prefix,
                 low=space.low,
                 high=space.high,
@@ -197,6 +199,8 @@ class NumberNode(SpaceNode):
                 high_inclusive=space.high_inclusive,
                 distribution=space.distribution,
             )
+        assert isinstance(value, (int, float))
+        return value
 
     def get_signature(self) -> str:
         """Get signature including type, bounds, and distribution.
@@ -270,6 +274,7 @@ class CategoricalNode(SpaceNode):
         Raises:
             TypeError: If space is not a CategoricalSpace.
         """
+        self._space: CategoricalSpace
         super().__init__(space)
         if not isinstance(self._space, CategoricalSpace):
             raise TypeError(
@@ -310,6 +315,8 @@ class CategoricalNode(SpaceNode):
             ValueError: If override references invalid choices.
             TypeError: If override has wrong type.
         """
+        from .config import ConfigNode
+
         # Case 1: Single value (check before list/dict since they might match str(override))
         if str(override) in self._children:
             return self._children[str(override)]
@@ -347,11 +354,12 @@ class CategoricalNode(SpaceNode):
                     new_choices.append(child_node.default)
                 else:
                     # ConfigNode - get the config class
+                    assert isinstance(child_node, ConfigNode)
                     new_choices.append(child_node._config_class)
 
             kwargs = {"description": self._space.description}
             if contains_default:
-                kwargs["default"] = self._space.default
+                kwargs["default"] = self._space.default  # type: ignore
 
             return CategoricalNode(CategoricalSpace(choices=new_choices, **kwargs))
 
@@ -399,11 +407,12 @@ class CategoricalNode(SpaceNode):
                 if isinstance(child_node, FixedNode):
                     new_choices.append(child_node.default)
                 else:
+                    assert isinstance(child_node, ConfigNode)
                     new_choices.append(child_node._config_class)
 
             kwargs = {"description": self._space.description}
             if contains_default:
-                kwargs["default"] = self._space.default
+                kwargs["default"] = self._space.default  # type: ignore
 
             new_node = CategoricalNode(CategoricalSpace(choices=new_choices, **kwargs))
 
@@ -545,6 +554,7 @@ class ConditionalNode(SpaceNode):
         Raises:
             TypeError: If space is not a ConditionalSpace.
         """
+        self._space: ConditionalSpace
         super().__init__(space)
         if not isinstance(self._space, ConditionalSpace):
             raise TypeError(
@@ -627,6 +637,8 @@ class ConditionalNode(SpaceNode):
             ValueError: If override has invalid keys or is empty.
             TypeError: If override is not a dict.
         """
+        from .config import ConfigNode
+
         if not isinstance(override, dict):
             raise TypeError(
                 f"ConditionalNode override must be a dict with 'true'/'false' keys, "
@@ -655,6 +667,7 @@ class ConditionalNode(SpaceNode):
                 return node._space
             else:
                 # ConfigNode
+                assert isinstance(node, ConfigNode)
                 return node._config_class
 
         new_true_branch = node_to_branch(new_true_node)

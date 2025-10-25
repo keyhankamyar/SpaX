@@ -119,22 +119,14 @@ class TestNumericInference:
 
     def test_int_with_only_lower_bound_returns_none(self):
         """Test that int with only lower bound returns None."""
-        field_info = FieldInfo(
-            annotation=int,
-            default=PydanticUndefined,
-            ge=0
-        )
+        field_info = FieldInfo(annotation=int, default=PydanticUndefined, ge=0)
 
         space = infer_space_from_field_info(field_info)
         assert space is None
 
     def test_int_with_only_upper_bound_returns_none(self):
         """Test that int with only upper bound returns None."""
-        field_info = FieldInfo(
-            annotation=int,
-            default=PydanticUndefined,
-            le=10
-        )
+        field_info = FieldInfo(annotation=int, default=PydanticUndefined, le=10)
 
         space = infer_space_from_field_info(field_info)
         assert space is None

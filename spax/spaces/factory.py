@@ -13,8 +13,8 @@ from pydantic.fields import FieldInfo
 from pydantic_core import PydanticUndefined
 
 from .base import UNSET, Space
-from .categorical import Categorical
-from .numeric import Float, Int
+from .categorical import CategoricalSpace
+from .numeric import FloatSpace, IntSpace
 
 
 def _infer_numeric_space(
@@ -64,9 +64,11 @@ def _infer_numeric_space(
 
     # Create the appropriate space
     if annotation is int:
-        return Int(gt=gt, ge=ge, lt=lt, le=le, default=default, description=description)
+        return IntSpace(
+            gt=gt, ge=ge, lt=lt, le=le, default=default, description=description
+        )
     else:  # float
-        return Float(
+        return FloatSpace(
             gt=gt, ge=ge, lt=lt, le=le, default=default, description=description
         )
 
@@ -163,11 +165,11 @@ def infer_space_from_field_info(field_info: FieldInfo) -> Space | None:
         if not choices:
             return None
 
-        return Categorical(choices, default=default, description=description)
+        return CategoricalSpace(choices, default=default, description=description)
 
     # Handle bool type
     if annotation is bool:
-        return Categorical([True, False], default=default, description=description)
+        return CategoricalSpace([True, False], default=default, description=description)
 
     # Handle Literal types
     if origin is Literal:
@@ -176,7 +178,7 @@ def infer_space_from_field_info(field_info: FieldInfo) -> Space | None:
         if not choices:
             return None
 
-        return Categorical(choices, default=default, description=description)
+        return CategoricalSpace(choices, default=default, description=description)
 
     # Handle numeric types with Pydantic Field constraints
     if annotation in (int, float):

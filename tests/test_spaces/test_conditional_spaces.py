@@ -232,43 +232,6 @@ class TestConditionalValidation:
             space.validate_with_config(50, config)
 
 
-class TestConditionalSampling:
-    """Test ConditionalSpace sampling behavior."""
-
-    def test_cannot_sample_without_config(self):
-        """Test that sample() cannot be called directly."""
-        space = ConditionalSpace(
-            condition=FieldCondition("x", EqualsTo(5)),
-            true=FloatSpace(ge=0.0, le=10.0),
-            false=FloatSpace(ge=10.0, le=20.0),
-        )
-
-        with pytest.raises(
-            NotImplementedError, match="cannot be sampled independently"
-        ):
-            space.sample()
-
-    def test_sampling_fixed_value_branch(self):
-        """Test sampling when branch is a fixed value."""
-
-        class MockConfig:
-            use_fixed = True
-
-        space = ConditionalSpace(
-            condition=FieldCondition("use_fixed", EqualsTo(True)),
-            true=42,
-            false=IntSpace(ge=0, le=100),
-        )
-        space.field_name = "value"
-
-        config = MockConfig()
-
-        samples = [space.sample_with_config(config) for _ in range(20)]
-
-        # All should be the fixed value
-        assert all(s == 42 for s in samples)
-
-
 class TestNestedConditionals:
     """Test nested ConditionalSpace structures."""
 

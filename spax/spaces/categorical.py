@@ -186,7 +186,7 @@ class CategoricalSpace(Space[Any]):
         """List of normalized probabilities for each choice."""
         return self._probs.copy()
 
-    def contains(self, other: Space) -> bool:
+    def contains(self, other: Any) -> bool:
         """Check if another space is contained within this space.
 
         Args:

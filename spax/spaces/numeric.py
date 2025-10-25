@@ -124,7 +124,7 @@ class NumberSpace(Space[float]):
                 f"Low must be larger than 0 when using log distribution. Got {self._low}"
             )
 
-        self._distribution = distribution
+        self._distribution: Literal["uniform", "log"] = distribution
 
         # Call parent __init__ with default and description
         super().__init__(default=default, description=description)
@@ -175,7 +175,7 @@ class NumberSpace(Space[float]):
         """Less than or equal (inclusive) upper bound, if specified."""
         return self._le
 
-    def contains(self, other: Space) -> bool:
+    def contains(self, other: Any) -> bool:
         """Check if another space is contained within this space.
 
         Args:
@@ -305,6 +305,7 @@ class FloatSpace(NumberSpace):
 
         value = float(value)
         self._check_bounds(value)
+        assert isinstance(value, float)
         return value
 
     @classmethod

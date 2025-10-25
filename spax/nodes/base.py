@@ -7,7 +7,7 @@ and sampling.
 """
 
 from abc import ABC, abstractmethod
-from typing import Any, Self
+from typing import Any
 
 
 class Node(ABC):
@@ -31,7 +31,7 @@ class Node(ABC):
     """
 
     @abstractmethod
-    def apply_override(self, override: Any) -> Self:
+    def apply_override(self, override: Any) -> "Node":
         """Apply an override to this node, returning a new modified node.
 
         Overrides allow narrowing search spaces or fixing values. The exact
@@ -102,7 +102,7 @@ class Node(ABC):
         pass
 
     @abstractmethod
-    def get_override_template(self) -> dict[str, Any] | None:
+    def get_override_template(self) -> dict[str, Any] | list[str] | None:
         """Get a template showing the structure for overriding this node.
 
         Override templates help users understand what overrides are possible

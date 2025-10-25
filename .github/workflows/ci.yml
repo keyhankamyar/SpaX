@@ -36,7 +36,7 @@ jobs:
         run: black --check .
 
       - name: Mypy (type check)
-        run: mypy spax
+        run: mypy --config-file pyproject.toml spax
 
   tests:
     name: Tests (py${{ matrix.python-version }})

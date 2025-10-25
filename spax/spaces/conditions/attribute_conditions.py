@@ -18,7 +18,7 @@ Key ideas:
 from abc import abstractmethod
 from collections.abc import Callable, Iterable
 import inspect
-from typing import Any, Self
+from typing import Any
 
 from .base import Condition
 
@@ -108,7 +108,7 @@ class ParsedFieldPath:
         return self._parts[0]
 
     @property
-    def sub_path(self) -> Self:
+    def sub_path(self) -> "ParsedFieldPath":
         """Returns a ParsedFieldPath from the sub parts."""
         if len(self._parts) <= 1:
             raise ValueError("No sub path available for single-segment path")
@@ -481,7 +481,7 @@ class MultiFieldLambdaCondition(AttributeCondition):
         self._paths = parsed_paths
         self._field_names = set(parsed_paths.keys())
 
-        if len(self._field_names) != len(field_names):
+        if len(self._field_names) != len(list(field_names)):
             raise ValueError("field_names cannot contain duplicates")
 
         self._func = func

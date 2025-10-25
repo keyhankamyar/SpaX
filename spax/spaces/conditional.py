@@ -328,36 +328,6 @@ class ConditionalSpace(Space[Any]):
             "dependency ordering."
         )
 
-    def sample_with_config(self, config: Any) -> Any:
-        """Sample a value using the config object for condition evaluation.
-
-        Args:
-            config: The config object to evaluate the condition on.
-
-        Returns:
-            A sampled value from the active branch.
-
-        Raises:
-            RuntimeError: If condition evaluation fails.
-        """
-        try:
-            active_branch = self._get_active_branch(config)
-        except Exception as e:
-            raise RuntimeError(
-                f"Failed to evaluate condition for field '{self.field_name}': {e}"
-            ) from e
-
-        # If the active branch is a Space, sample from it
-        if isinstance(active_branch, Space):
-            # For nested Conditionals, pass config through
-            if isinstance(active_branch, ConditionalSpace):
-                return active_branch.sample_with_config(config)
-            else:
-                return active_branch.sample()
-        else:
-            # Fixed value
-            return active_branch
-
     @classmethod
     def __get_pydantic_core_schema__(
         cls, source_type: Any, handler: GetCoreSchemaHandler

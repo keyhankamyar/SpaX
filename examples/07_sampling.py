@@ -277,9 +277,7 @@ def main():
     print(f"  Per sample: {elapsed / 1000 * 1000:.2f} ms")
 
     # Verify uniqueness with different seeds
-    unique_configs = len(
-        {(c.hidden_dim, c.batch_size, c.optimizer) for c in samples}
-    )
+    unique_configs = len({(c.hidden_dim, c.batch_size, c.optimizer) for c in samples})
     print(f"  Unique configs: {unique_configs}/1000")
 
     # -------------------------------------------------------------------------

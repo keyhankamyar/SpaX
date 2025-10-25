@@ -192,10 +192,9 @@ class TrialSampler(Sampler):
         # Map distribution to Optuna's log parameter
         log = distribution == "log"
 
-        self._record[name] = self._trial.suggest_int(
-            name=name, low=low, high=high, log=log
-        )
-        return self._record[name]
+        value = int(self._trial.suggest_int(name=name, low=low, high=high, log=log))
+        self._record[name] = value
+        return value
 
     def suggest_float(
         self,
@@ -228,10 +227,9 @@ class TrialSampler(Sampler):
         # Map distribution to Optuna's log parameter
         log = distribution == "log"
 
-        self._record[name] = self._trial.suggest_float(
-            name=name, low=low, high=high, log=log
-        )
-        return self._record[name]
+        value = float(self._trial.suggest_float(name=name, low=low, high=high, log=log))
+        self._record[name] = value
+        return value
 
     def suggest_categorical(
         self,
@@ -252,5 +250,6 @@ class TrialSampler(Sampler):
         Returns:
             One of the choices, selected by Optuna's sampler.
         """
-        self._record[name] = self._trial.suggest_categorical(name=name, choices=choices)
-        return self._record[name]
+        value = self._trial.suggest_categorical(name=name, choices=choices)
+        self._record[name] = value
+        return value

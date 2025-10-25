@@ -83,16 +83,18 @@ class RandomSampler(Sampler):
             high = high - 1
 
         if distribution == "uniform":
-            self._record[name] = self._rng.randint(low, high)
-            return self._record[name]
+            value = self._rng.randint(low, high)
+            self._record[name] = value
+            return value
         elif distribution == "log":
             # Log-uniform sampling for integers
             assert low > 0, "Low must be positive for log distribution"
             log_low = math.log(low)
             log_high = math.log(high)
             log_value = self._rng.uniform(log_low, log_high)
-            self._record[name] = int(round(math.exp(log_value)))
-            return self._record[name]
+            value = int(round(math.exp(log_value)))
+            self._record[name] = value
+            return value
         else:
             raise ValueError(f"Unknown distribution: {distribution}")
 
@@ -128,16 +130,18 @@ class RandomSampler(Sampler):
             high = high - 1e-10
 
         if distribution == "uniform":
-            self._record[name] = self._rng.uniform(low, high)
-            return self._record[name]
+            value = self._rng.uniform(low, high)
+            self._record[name] = value
+            return value
         elif distribution == "log":
             # Log-uniform sampling for floats
             assert low > 0, "Low must be positive for log distribution"
             log_low = math.log(low)
             log_high = math.log(high)
             log_value = self._rng.uniform(log_low, log_high)
-            self._record[name] = math.exp(log_value)
-            return self._record[name]
+            value = math.exp(log_value)
+            self._record[name] = value
+            return value
         else:
             raise ValueError(f"Unknown distribution: {distribution}")
 

@@ -67,7 +67,12 @@ class TestAnd:
 
     def test_and_attribute(self):
         """Test Or when all conditions are false."""
-        cond = And([FieldCondition("field_1", EqualsTo(10)), FieldCondition("field_2", EqualsTo(5))])
+        cond = And(
+            [
+                FieldCondition("field_1", EqualsTo(10)),
+                FieldCondition("field_2", EqualsTo(5)),
+            ]
+        )
         assert cond.get_required_fields() == {"field_1", "field_2"}
 
 
@@ -93,7 +98,12 @@ class TestOr:
 
     def test_or_attribute(self):
         """Test Or when all conditions are false."""
-        cond = Or([FieldCondition("field_1", EqualsTo(10)), FieldCondition("field_2", EqualsTo(5))])
+        cond = Or(
+            [
+                FieldCondition("field_1", EqualsTo(10)),
+                FieldCondition("field_2", EqualsTo(5)),
+            ]
+        )
         assert cond.get_required_fields() == {"field_1", "field_2"}
 
     def test_or_multiple_conditions(self):

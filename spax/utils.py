@@ -69,7 +69,7 @@ def is_comparable(value: Any) -> bool:
 
     # Check for custom __eq__ (not just inherited from object)
     # Objects with default __eq__ only compare by identity, which is usually not what we want
-    if type(value).__eq__ is object.__eq__:
+    if type(value).__eq__ is object.__eq__:  # type: ignore
         return False
 
     # Sanity check: value should equal itself
@@ -79,7 +79,7 @@ def is_comparable(value: Any) -> bool:
 
     # Final sanity check: value should not equal arbitrary objects
     # (catches broken __eq__ implementations that always return True)
-    return object() != value
+    return bool(object() != value)
 
 
 def type_from_annotation(annotation: Any, type_name: str) -> type | None:

@@ -96,7 +96,7 @@ class Config(BaseModel, validate_assignment=True):
     """
 
     # Class variable to hold the ConfigNode (set during class creation)
-    _node: ClassVar[ConfigNode | None] = None
+    _node: ClassVar[ConfigNode]
 
     @classmethod
     def __pydantic_init_subclass__(cls, **kwargs: Any) -> None:
@@ -133,7 +133,6 @@ class Config(BaseModel, validate_assignment=True):
         Raises:
             ValueError: If validation fails for any field.
         """
-        assert cls._node is not None
         return cls._node.validate_spaces(data)
 
     @classmethod
@@ -155,7 +154,6 @@ class Config(BaseModel, validate_assignment=True):
             >>> MyConfig.get_parameter_names()
             ['MyConfig.lr', 'MyConfig.layers']
         """
-        assert cls._node is not None
         return cls._node.get_parameter_names()
 
     @classmethod
@@ -172,10 +170,11 @@ class Config(BaseModel, validate_assignment=True):
             >>> node = MyConfig.get_node()
             >>> override_node = MyConfig.get_node(override={"lr": {"ge": 1e-4}})
         """
-        assert cls._node is not None
         if override is None:
             return cls._node
-        return cls._node.apply_override(override)
+        node = cls._node.apply_override(override)
+        assert isinstance(node, ConfigNode)
+        return node
 
     @classmethod
     def sample(cls, sampler: Any, override: dict[str, Any] | None = None) -> Self:
@@ -291,10 +290,9 @@ class Config(BaseModel, validate_assignment=True):
                 'optimizer': ['adam', 'sgd', 'rmsprop']
             }
         """
-        assert cls._node is not None
         return cls._node.get_override_template()
 
-    def model_dump(self) -> dict[str, Any]:
+    def model_dump(self) -> dict[str, Any]:  # type: ignore
         """Serialize the configuration to a dictionary.
 
         Extends Pydantic's model_dump to add type discriminators for
@@ -362,7 +360,7 @@ class Config(BaseModel, validate_assignment=True):
             >>> print(yaml_str)
         """
         try:
-            import yaml
+            import yaml  # type: ignore
         except ImportError:
             raise RuntimeError(
                 "PyYAML is required for YAML serialization. "
@@ -370,7 +368,9 @@ class Config(BaseModel, validate_assignment=True):
             ) from None
 
         data = self.model_dump()
-        return yaml.dump(data, sort_keys=False, **yaml_kwargs)
+        yaml_string = yaml.dump(data, sort_keys=False, **yaml_kwargs)
+        assert isinstance(yaml_string, str)
+        return yaml_string
 
     def model_dump_toml(self) -> str:
         """Serialize the configuration to TOML.
@@ -398,7 +398,7 @@ class Config(BaseModel, validate_assignment=True):
         return tomli_w.dumps(data)
 
     @classmethod
-    def model_validate(cls, data: Any) -> Self:
+    def model_validate(cls, data: Any) -> Self:  # type: ignore
         """Validate and create a Config instance from data.
 
         Handles __type__ discriminators for nested Config objects,
@@ -454,7 +454,9 @@ class Config(BaseModel, validate_assignment=True):
         return super().model_validate(processed_data)
 
     @classmethod
-    def model_validate_json(cls, json_data: str | bytes, **json_kwargs: Any) -> Self:
+    def model_validate_json(  # pyright: ignore[reportIncompatibleMethodOverride]
+        cls, json_data: str | bytes, **json_kwargs: Any
+    ) -> "Config":
         """Validate and create a Config instance from JSON.
 
         Args:

@@ -7,7 +7,7 @@ validation, sampling, and override application for entire configurations.
 
 from collections.abc import Generator
 import hashlib
-from typing import Any, Self
+from typing import Any
 
 from pydantic_core import PydanticUndefined
 
@@ -67,6 +67,17 @@ class ConfigNode(Node):
         Raises:
             TypeError: If config_class is not a Config subclass.
         """
+        from spax.config import Config
+
+        if not isinstance(config_class, type):
+            raise TypeError(
+                f"config_class must be a type, got {type(config_class).__name__}"
+            )
+        if not issubclass(config_class, Config):
+            raise TypeError(
+                f"config_class must be a Config class, got {type(config_class).__name__}"
+            )
+
         self._config_class = config_class
         self._children: dict[str, Node] = {}
         self._field_order: list[str] = []
@@ -102,15 +113,6 @@ class ConfigNode(Node):
         """
         from spax.config import Config
 
-        if not isinstance(self._config_class, type):
-            raise TypeError(
-                f"config_class must be a type, got {type(self._config_class).__name__}"
-            )
-        if not issubclass(self._config_class, Config):
-            raise TypeError(
-                f"config_class must be a Config class, got {type(self._config_class).__name__}"
-            )
-
         def _get_space_node(space: Space) -> Node:
             """Convert a Space to the appropriate SpaceNode type."""
             if isinstance(space, NumberSpace):
@@ -123,7 +125,8 @@ class ConfigNode(Node):
                     if isinstance(single_choice, type) and issubclass(
                         single_choice, Config
                     ):
-                        return single_choice._node
+                        node = single_choice._node
+                        return node
                     else:
                         # Simple value -> FixedNode
                         return FixedNode(default=single_choice)
@@ -131,6 +134,7 @@ class ConfigNode(Node):
                     return CategoricalNode(space)
             else:
                 # ConditionalSpace
+                assert isinstance(space, ConditionalSpace)
                 return ConditionalNode(space)
 
         # Check for parent node to inherit fields
@@ -142,7 +146,6 @@ class ConfigNode(Node):
                 and issubclass(parent_class, Config)
                 and parent_class is not Config
                 and hasattr(parent_class, "_node")
-                and parent_class._node is not None
             ):
                 parent_node = parent_class._node
 
@@ -245,10 +248,9 @@ class ConfigNode(Node):
         in_degree = dict.fromkeys(self._children, 0)
 
         # Calculate in-degrees: each ConditionalNode depends on its roots.
-        for field_name, child_node in self._children.items():
-            if isinstance(child_node, ConditionalNode):
-                for _ in child_node.dependencies:
-                    in_degree[field_name] += 1
+        for field_name, child_node in conditional_children.items():
+            for _ in child_node.dependencies:
+                in_degree[field_name] += 1
 
         # Queue all nodes with no incoming edges
         queue: list[str] = [field for field, degree in in_degree.items() if degree == 0]
@@ -261,11 +263,8 @@ class ConfigNode(Node):
             ordered.append(current)
 
             # Reduce in-degree for dependent fields
-            for field_name, child_node in self._children.items():
-                if (
-                    isinstance(child_node, ConditionalNode)
-                    and current in child_node.dependencies
-                ):
+            for field_name, child_node in conditional_children.items():
+                if current in child_node.dependencies:
                     in_degree[field_name] -= 1
                     if in_degree[field_name] == 0:
                         queue.append(field_name)
@@ -275,8 +274,9 @@ class ConfigNode(Node):
             remaining = set(self._children.keys()) - set(ordered)
             cycle_info = []
             for field in remaining:
-                if isinstance(self._children[field], ConditionalNode):
-                    deps = self._children[field].dependencies & remaining
+                child = self._children[field]
+                if isinstance(child, ConditionalNode):
+                    deps = child.dependencies & remaining
                     cycle_info.append(f"{field} -> {deps}")
             raise ValueError(
                 f"Circular dependency detected. "
@@ -316,9 +316,7 @@ class ConfigNode(Node):
 
         key = parts[0]
         if key not in self._children:
-            raise ValueError(
-                f"'{key}' does not exist on {self._config_class.__name__}"
-            )
+            raise ValueError(f"'{key}' does not exist on {self._config_class.__name__}")
         child_node = self._children[key]
 
         # If this was the last segment, we're done
@@ -443,7 +441,7 @@ class ConfigNode(Node):
         for field_name in self._field_order:
             yield field_name, self._children[field_name]
 
-    def apply_override(self, override: Any) -> Self:
+    def apply_override(self, override: Any) -> Node:
         """Apply overrides to child fields.
 
         Args:

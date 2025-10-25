@@ -77,7 +77,7 @@ class EqualsTo(ObjectCondition):
         """
         if not is_comparable(value):
             raise TypeError(f"Value must be comparable, got {type(value).__name__}")
-        return value == self._value
+        return bool(value == self._value)
 
     def __repr__(self) -> str:
         return f"EqualsTo({self._value!r})"
@@ -129,7 +129,7 @@ class NotEqualsTo(ObjectCondition):
         """
         if not is_comparable(value):
             raise TypeError(f"Value must be comparable, got {type(value).__name__}")
-        return value != self._value
+        return bool(value != self._value)
 
     def __repr__(self) -> str:
         return f"NotEqualsTo({self._value!r})"
@@ -437,6 +437,7 @@ class IsInstance(ObjectCondition):
 
     def __repr__(self) -> str:
         return f"IsInstance({self._class_or_tuple!r})"
+
 
 class Lambda(ObjectCondition):
     """Condition defined by a custom function.
