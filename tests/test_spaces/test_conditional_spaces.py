@@ -24,9 +24,7 @@ class TestConditionalSpaceBasic:
         # ObjectCondition should fail
         with pytest.raises(TypeError, match="AttributeCondition"):
             ConditionalSpace(
-                condition=EqualsTo(  # This is ObjectCondition, not AttributeCondition
-                    5
-                ),
+                condition=EqualsTo(5),  # ObjectCondition, not AttributeCondition
                 true=FloatSpace(ge=0.0, le=10.0),
                 false=FloatSpace(ge=10.0, le=20.0),
             )
@@ -387,7 +385,7 @@ class TestMultiFieldLambdaCondition:
     """Test ConditionalSpace with MultiFieldLambdaCondition."""
 
     def test_multifield_lambda_condition(self):
-        """Test ConditionalSpace with MultiFieldLambdaCondition."""
+        """Test ConditionalSpace with MultiFieldLambdaCondition (2 fields)."""
 
         class MockConfig:
             min_val = 10
@@ -396,7 +394,8 @@ class TestMultiFieldLambdaCondition:
         # Condition: max_val > min_val
         space = ConditionalSpace(
             condition=MultiFieldLambdaCondition(
-                ["min_val", "max_val"], lambda min_val, max_val: max_val > min_val
+                ["min_val", "max_val"],
+                lambda d: d["max_val"] > d["min_val"],
             ),
             true="valid_range",
             false="invalid_range",
@@ -413,7 +412,7 @@ class TestMultiFieldLambdaCondition:
         assert space.validate_with_config("invalid_range", config) == "invalid_range"
 
     def test_complex_multifield_condition(self):
-        """Test ConditionalSpace with complex multi-field lambda."""
+        """Test ConditionalSpace with MultiFieldLambdaCondition (3 fields)."""
 
         class MockConfig:
             width = 10
@@ -424,7 +423,7 @@ class TestMultiFieldLambdaCondition:
         space = ConditionalSpace(
             condition=MultiFieldLambdaCondition(
                 ["width", "height", "depth"],
-                lambda width, height, depth: width * height * depth < 1000,
+                lambda d: d["width"] * d["height"] * d["depth"] < 1000,
             ),
             true=IntSpace(ge=0, le=10),
             false=IntSpace(ge=10, le=100),
@@ -517,3 +516,96 @@ class TestConditionalFactory:
 
         assert isinstance(space, ConditionalSpace)
         assert space.description == "Test conditional"
+
+
+# ============================================================================
+# NEW TESTS FOR DEPENDENCY TRACKING / DOTTED PATHS
+# ============================================================================
+
+
+class TestDependencyIntrospection:
+    """Tests for get_required_fields() / get_required_paths() behavior."""
+
+    def test_fieldcondition_required_paths_simple(self):
+        cond = FieldCondition("foo", EqualsTo(1))
+
+        # Top-level dependency
+        assert cond.get_required_fields() == {"foo"}
+
+        # Required paths should include just "foo"
+        paths = cond.get_required_paths()
+        assert [p.raw for p in paths] == ["foo"]
+
+    def test_fieldcondition_required_paths_nested(self):
+        # Outer.field 'outer' wraps inner FieldCondition("inner", ...)
+        nested = FieldCondition("outer", FieldCondition("inner", EqualsTo(10)))
+
+        # Only the root "outer" should be required as a top-level field
+        assert nested.get_required_fields() == {"outer"}
+
+        # Required paths should include:
+        # - "outer" (the immediate root)
+        # - "outer.inner" (the nested access)
+        raw_paths = [p.raw for p in nested.get_required_paths()]
+        assert "outer" in raw_paths
+        assert "outer.inner" in raw_paths
+        # determinism check: root first, then extended path
+        assert raw_paths[0] == "outer"
+
+    def test_multifield_required_fields_and_paths(self):
+        cond = MultiFieldLambdaCondition(
+            ["model.hidden_dim", "trainer.batch_size"],
+            lambda d: d["model.hidden_dim"] > 0 and d["trainer.batch_size"] > 0,
+        )
+
+        # Required fields should be the ROOTS of the dotted paths
+        # -> {"model", "trainer"}
+        assert cond.get_required_fields() == {"model", "trainer"}
+
+        # Required paths should include both full dotted paths, sorted
+        paths = cond.get_required_paths()
+        raw_paths = [p.raw for p in paths]
+        assert set(raw_paths) == {"model.hidden_dim", "trainer.batch_size"}
+
+        # Should be deterministic ordering (sorted by raw string)
+        assert raw_paths == sorted(raw_paths)
+
+    def test_conditional_space_with_dotted_field_condition(self):
+        """ConditionalSpace should work with nested FieldCondition chains."""
+
+        class OptimizerConfig:
+            name = "adam"
+
+        class TrainerConfig:
+            optimizer = OptimizerConfig()
+            lr = 1e-3
+
+        class RootConfig:
+            trainer = TrainerConfig()
+
+        # If trainer.optimizer.name == "adam", then lr space is (1e-5, 1e-2)
+        lr_space = ConditionalSpace(
+            condition=FieldCondition(
+                "trainer",
+                FieldCondition(
+                    "optimizer",
+                    FieldCondition("name", EqualsTo("adam")),
+                ),
+            ),
+            true=FloatSpace(ge=1e-5, le=1e-2),
+            false=FloatSpace(ge=1e-3, le=1e-1),
+        )
+        lr_space.field_name = "lr"
+
+        cfg = RootConfig()
+
+        # matches true branch because optimizer.name == "adam"
+        assert lr_space.validate_with_config(5e-4, cfg) == pytest.approx(5e-4)
+
+        # flip optimizer name -> goes to false branch
+        cfg.trainer.optimizer.name = "sgd"
+        assert lr_space.validate_with_config(5e-2, cfg) == pytest.approx(5e-2)
+
+        # now false branch is active, so low values should fail validation
+        with pytest.raises(ValueError):
+            lr_space.validate_with_config(5e-4, cfg)

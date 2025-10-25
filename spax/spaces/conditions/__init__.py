@@ -72,6 +72,7 @@ from .attribute_conditions import (
     AttributeCondition,
     FieldCondition,
     MultiFieldLambdaCondition,
+    ParsedFieldPath,
 )
 from .base import Condition
 from .composite_conditions import And, Not, Or
@@ -92,6 +93,8 @@ __all__ = [
     "Condition",
     "AttributeCondition",
     "ObjectCondition",
+    # Attribute condition's path
+    "ParsedFieldPath",
     # Attribute conditions
     "FieldCondition",
     "MultiFieldLambdaCondition",

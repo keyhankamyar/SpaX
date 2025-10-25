@@ -147,8 +147,8 @@ class ConvLayerConfig(BaseLayerConfig):
     )
     groups: int = sp.Conditional(
         condition=sp.MultiFieldLambdaCondition(
-            field_names={"hidden_dim", "kernel_size"},
-            func=lambda hidden_dim, kernel_size: hidden_dim >= 32 and kernel_size >= 3,
+            field_names=["hidden_dim", "kernel_size"],
+            func=lambda d: d["hidden_dim"] >= 32 and d["kernel_size"] >= 3,
         ),
         true=sp.Categorical([1, 2, 4, 8], default=1),
         false=1,
@@ -167,8 +167,8 @@ class AttentionLayerConfig(BaseLayerConfig):
     )
     head_dim: int = sp.Conditional(
         condition=sp.MultiFieldLambdaCondition(
-            field_names={"hidden_dim", "num_heads"},
-            func=lambda hidden_dim, num_heads: (hidden_dim / num_heads) < 8,
+            field_names=["hidden_dim", "num_heads"],
+            func=lambda d: (d["hidden_dim"] / d["num_heads"]) < 8,
         ),
         true=sp.Int(ge=8, le=128, default=64),
         false=32,

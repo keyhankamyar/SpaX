@@ -173,7 +173,7 @@ class TestFieldCondition:
 
         cond = FieldCondition("nonexistent", EqualsTo(10))
 
-        with pytest.raises(AttributeError, match="no field 'nonexistent'"):
+        with pytest.raises(AttributeError, match=r"missing attribute 'nonexistent'"):
             cond(MockConfig())
 
     def test_nested_field_not_exist_error(self):
@@ -189,12 +189,12 @@ class TestFieldCondition:
 
         # First level missing
         cond = FieldCondition("missing", FieldCondition("value", EqualsTo(10)))
-        with pytest.raises(AttributeError, match="no field 'missing'"):
+        with pytest.raises(AttributeError, match=r"missing attribute 'missing'"):
             cond(config)
 
         # Second level missing
         cond = FieldCondition("inner", FieldCondition("missing", EqualsTo(10)))
-        with pytest.raises(AttributeError, match="no field 'missing'"):
+        with pytest.raises(AttributeError, match=r"missing attribute 'missing'"):
             cond(config)
 
     def test_non_string_field_name_error(self):
@@ -226,6 +226,42 @@ class TestFieldCondition:
         assert "my_field" in repr_str
         assert "EqualsTo(10)" in repr_str
 
+    # --- New explicit tests for dot notation ---
+
+    def test_dot_notation_basic(self):
+        """FieldCondition with dotted path should work."""
+
+        class Optim:
+            name = "adam"
+
+        class Cfg:
+            optimizer = Optim()
+
+        cond = FieldCondition("optimizer.name", EqualsTo("adam"))
+        assert cond(Cfg()) is True
+
+        cond = FieldCondition("optimizer.name", EqualsTo("sgd"))
+        assert cond(Cfg()) is False
+
+    def test_dot_notation_missing_any_hop(self):
+        """Dotted resolution should error at the first missing hop with helpful message."""
+
+        class Inner:
+            a = 1
+
+        class Outer:
+            inner = Inner()
+
+        # Missing root
+        cond = FieldCondition("missing.a", EqualsTo(1))
+        with pytest.raises(AttributeError, match=r"missing attribute 'missing'"):
+            cond(Outer())
+
+        # Missing second hop
+        cond = FieldCondition("inner.missing", EqualsTo(1))
+        with pytest.raises(AttributeError, match=r"missing attribute 'inner\.missing'"):
+            cond(Outer())
+
 
 class TestMultiFieldLambdaCondition:
     """Test MultiFieldLambdaCondition."""
@@ -237,10 +273,12 @@ class TestMultiFieldLambdaCondition:
             x = 10
             y = 20
 
-        cond = MultiFieldLambdaCondition(["x", "y"], lambda x, y: x + y == 30)
+        cond = MultiFieldLambdaCondition(
+            ["x", "y"], lambda data: data["x"] + data["y"] == 30
+        )
         assert cond(MockConfig()) is True
 
-        cond = MultiFieldLambdaCondition(["x", "y"], lambda x, y: x > y)
+        cond = MultiFieldLambdaCondition(["x", "y"], lambda data: data["x"] > data["y"])
         assert cond(MockConfig()) is False
 
     def test_three_field_lambda(self):
@@ -252,7 +290,7 @@ class TestMultiFieldLambdaCondition:
             c = 15
 
         cond = MultiFieldLambdaCondition(
-            ["a", "b", "c"], lambda a, b, c: a + b + c == 30
+            ["a", "b", "c"], lambda d: d["a"] + d["b"] + d["c"] == 30
         )
         assert cond(MockConfig()) is True
 
@@ -266,7 +304,7 @@ class TestMultiFieldLambdaCondition:
             z = 4
 
         cond = MultiFieldLambdaCondition(
-            ["w", "x", "y", "z"], lambda w, x, y, z: w + x + y + z == 10
+            ["w", "x", "y", "z"], lambda d: d["w"] + d["x"] + d["y"] + d["z"] == 10
         )
         assert cond(MockConfig()) is True
 
@@ -281,7 +319,7 @@ class TestMultiFieldLambdaCondition:
         # Check if current is within range
         cond = MultiFieldLambdaCondition(
             ["min_val", "max_val", "current"],
-            lambda min_val, max_val, current: min_val <= current <= max_val,
+            lambda d: d["min_val"] <= d["current"] <= d["max_val"],
         )
         assert cond(MockConfig()) is True
 
@@ -294,53 +332,39 @@ class TestMultiFieldLambdaCondition:
 
         cond = MultiFieldLambdaCondition(
             ["first_name", "last_name"],
-            lambda first_name, last_name: len(first_name) + len(last_name) == 7,
+            lambda d: len(d["first_name"]) + len(d["last_name"]) == 7,
         )
         assert cond(MockConfig()) is True
 
     def test_field_names_not_iterable_error(self):
         """Test error when field_names is not iterable."""
         with pytest.raises(TypeError, match="iterable"):
-            MultiFieldLambdaCondition(123, lambda x: True)
+            MultiFieldLambdaCondition(123, lambda data: True)
 
     def test_field_names_string_error(self):
         """Test error when field_names is a string (should be iterable of strings)."""
         with pytest.raises(TypeError, match="iterable"):
-            MultiFieldLambdaCondition("field", lambda field: True)
+            MultiFieldLambdaCondition("field", lambda data: True)
 
     def test_field_names_empty_error(self):
         """Test error with empty field_names."""
         with pytest.raises(ValueError, match="cannot be empty"):
-            MultiFieldLambdaCondition([], lambda: True)
+            MultiFieldLambdaCondition([], lambda data: True)
 
     def test_field_names_duplicates_error(self):
         """Test error with duplicate field names."""
         with pytest.raises(ValueError, match="cannot contain duplicates"):
-            MultiFieldLambdaCondition(["x", "y", "x"], lambda x, y: True)
+            MultiFieldLambdaCondition(["x", "y", "x"], lambda d: True)
 
     def test_field_names_non_string_error(self):
         """Test error when field_names contains non-strings."""
-        with pytest.raises(TypeError, match="must be strings"):
-            MultiFieldLambdaCondition([1, 2], lambda: True)
+        with pytest.raises(TypeError, match="field_name must be str"):
+            MultiFieldLambdaCondition([1, 2], lambda d: True)
 
     def test_non_callable_func_error(self):
         """Test error with non-callable func."""
         with pytest.raises(TypeError, match="callable"):
             MultiFieldLambdaCondition(["x"], "not callable")
-
-    def test_func_signature_mismatch_error(self):
-        """Test error when func signature doesn't match field_names."""
-        # Too many parameters
-        with pytest.raises(TypeError, match="Could not validate function signature"):
-            MultiFieldLambdaCondition(["x"], lambda x, y: True)
-
-        # Too few parameters
-        with pytest.raises(TypeError, match="Could not validate function signature"):
-            MultiFieldLambdaCondition(["x", "y"], lambda x: True)
-
-        # Wrong parameter names
-        with pytest.raises(TypeError, match="Could not validate function signature"):
-            MultiFieldLambdaCondition(["x", "y"], lambda a, b: True)
 
     def test_func_non_bool_return_error(self):
         """Test error when func doesn't return bool."""
@@ -348,7 +372,7 @@ class TestMultiFieldLambdaCondition:
         class MockConfig:
             x = 10
 
-        cond = MultiFieldLambdaCondition(["x"], lambda x: x + 1)
+        cond = MultiFieldLambdaCondition(["x"], lambda d: d["x"] + 1)
 
         with pytest.raises(TypeError, match="return bool"):
             cond(MockConfig())
@@ -359,26 +383,40 @@ class TestMultiFieldLambdaCondition:
         class MockConfig:
             x = 10
 
-        cond = MultiFieldLambdaCondition(
-            ["x", "nonexistent"], lambda x, nonexistent: True
-        )
+        cond = MultiFieldLambdaCondition(["x", "nonexistent"], lambda d: True)
 
-        with pytest.raises(AttributeError, match="no field 'nonexistent'"):
+        with pytest.raises(AttributeError, match=r"missing attribute 'nonexistent'"):
             cond(MockConfig())
 
     def test_get_required_fields(self):
-        """Test get_required_fields returns all field names."""
-        cond = MultiFieldLambdaCondition(
-            ["field1", "field2", "field3"], lambda field1, field2, field3: True
-        )
+        """Test get_required_fields returns all top-level field names (roots)."""
+        cond = MultiFieldLambdaCondition(["field1", "field2", "field3"], lambda d: True)
         assert cond.get_required_fields() == {"field1", "field2", "field3"}
 
     def test_repr(self):
         """Test string representation."""
-        cond = MultiFieldLambdaCondition(["x", "y"], lambda x, y: x > y)
+        cond = MultiFieldLambdaCondition(["x", "y"], lambda d: d["x"] > d["y"])
         repr_str = repr(cond)
         assert "MultiFieldLambdaCondition" in repr_str
         assert "x" in repr_str or "y" in repr_str
+
+    # --- New: dotted paths in MultiFieldLambdaCondition ---
+
+    def test_multifield_with_dotted_paths(self):
+        """Support dotted field paths and resolve correctly."""
+
+        class Inner:
+            a = 2
+
+        class Outer:
+            inner = Inner()
+            x = 3
+
+        cond = MultiFieldLambdaCondition(
+            ["inner.a", "x"],
+            lambda d: d["inner.a"] + d["x"] == 5,
+        )
+        assert cond(Outer()) is True
 
 
 class TestAttributeConditionIntegration:
@@ -429,7 +467,8 @@ class TestAttributeConditionIntegration:
             [
                 FieldCondition("enabled", EqualsTo(True)),
                 MultiFieldLambdaCondition(
-                    ["min_val", "max_val"], lambda min_val, max_val: max_val > min_val
+                    ["min_val", "max_val"],
+                    lambda d: d["max_val"] > d["min_val"],
                 ),
             ]
         )

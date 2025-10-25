@@ -16,6 +16,7 @@ from spax.spaces import (
     CategoricalSpace,
     ConditionalSpace,
     NumberSpace,
+    ParsedFieldPath,
     Space,
     infer_space_from_field_info,
 )
@@ -201,38 +202,61 @@ class ConfigNode(Node):
         if not self._children:
             return
 
+        # Collect all conditional children once so we don't keep re-checking.
+        conditional_children: dict[str, ConditionalNode] = {
+            name: child
+            for name, child in self._children.items()
+            if isinstance(child, ConditionalNode)
+        }
+
         # Check if any child has dependencies
-        if not any(
-            isinstance(child, ConditionalNode) for child in self._children.values()
-        ):
+        if not conditional_children:
             # No dependencies - use field order as-is
             self._field_order = list(self._children.keys())
             return
 
-        # Build dependency graph and validate all dependencies exist
-        for field_name, child_node in self._children.items():
-            if isinstance(child_node, ConditionalNode):
-                for dep in child_node.dependencies:
-                    if dep not in self._children:
-                        raise ValueError(
-                            f"Field '{field_name}' has dependency on an unknown field '{dep}'"
-                        )
+        # 1. Validate dependencies for each ConditionalNode
+        #    - top-level deps must exist (old behavior)
+        #    - full dotted paths must be structurally valid (new behavior)
+        for field_name, child_node in conditional_children.items():
+            assert isinstance(child_node, ConditionalNode)
 
-        # Topological sort using Kahn's algorithm
+            # (a) Check top-level dependency names are known children
+            for dep in child_node.dependencies:
+                if dep not in self._children:
+                    raise ValueError(
+                        f"Field '{field_name}' has dependency on an unknown field '{dep}'"
+                    )
+
+            # (b) Check each full dotted path is actually navigable in the
+            #     declared ConfigNode graph.
+            for path in child_node.required_paths:
+                try:
+                    # This will raise ValueError with a helpful message if invalid.
+                    self.get_nested_node(path)
+                except ValueError as e:
+                    raise ValueError(
+                        f"Field '{field_name}' has invalid dependency path "
+                        f"{path.raw!r}: {e}"
+                    ) from e
+
+        # 2. Build dependency graph (top-level only) and run topological sort.
+        #    This determines sampling / validation order.
         in_degree = dict.fromkeys(self._children, 0)
 
-        # Calculate in-degrees
+        # Calculate in-degrees: each ConditionalNode depends on its roots.
         for field_name, child_node in self._children.items():
             if isinstance(child_node, ConditionalNode):
                 for _ in child_node.dependencies:
                     in_degree[field_name] += 1
 
-        # Queue of nodes with no dependencies
+        # Queue all nodes with no incoming edges
         queue: list[str] = [field for field, degree in in_degree.items() if degree == 0]
         ordered: list[str] = []
 
         while queue:
-            queue.sort()  # Keep deterministic
+            # deterministic order: sort to make behavior stable
+            queue.sort()
             current = queue.pop(0)
             ordered.append(current)
 
@@ -246,7 +270,7 @@ class ConfigNode(Node):
                     if in_degree[field_name] == 0:
                         queue.append(field_name)
 
-        # Check for circular dependencies
+        # 3. Detect cycles
         if len(ordered) != len(self._children):
             remaining = set(self._children.keys()) - set(ordered)
             cycle_info = []
@@ -261,6 +285,58 @@ class ConfigNode(Node):
             )
 
         self._field_order = ordered
+
+    def get_nested_node(self, node_path: ParsedFieldPath) -> Node:
+        """Return the Node for a path starting at this ConfigNode.
+
+        This is used for static validation of dependency paths inside
+        ConditionalNode conditions.
+
+        Rules:
+        - The first segment must be a child of this ConfigNode.
+        - If the path has more than one segment, each intermediate segment
+          must itself be a ConfigNode (i.e. represent a nested Config field),
+          so we can keep descending.
+        - If we ever try to descend into something that is not a ConfigNode
+          (e.g. NumberNode, ConditionalNode, FixedNode, etc.), that's invalid.
+
+        Args:
+            node_path: A ParsedFieldPath
+
+        Returns:
+            The Node corresponding to the final segment.
+
+        Raises:
+            ValueError:
+                - if any segment doesn't exist,
+                - if we try to descend through a non-Config node,
+                - if the path is syntactically invalid.
+        """
+        parts = node_path.parts  # e.g. ["model", "optimizer", "name"]
+
+        key = parts[0]
+        if key not in self._children:
+            raise ValueError(
+                f"'{key}' does not exist on {self._config_class.__name__}"
+            )
+        child_node = self._children[key]
+
+        # If this was the last segment, we're done
+        if len(parts) == 1:
+            return child_node
+
+        # Otherwise we need to go deeper. That only makes sense if this child
+        # is itself a ConfigNode (i.e. a nested Config field).
+        if not isinstance(child_node, ConfigNode):
+            raise ValueError(
+                f"'{key}' is not a nested Config (found {type(child_node).__name__})"
+                f", cannot access '{node_path.raw}'"
+            )
+
+        try:
+            return child_node.get_nested_node(node_path.sub_path)
+        except ValueError as e:
+            raise ValueError(f"Error in {self._config_class.__name__} Node: {e}") from e
 
     def validate_spaces(self, data: dict[str, Any]) -> dict[str, Any]:
         """Validate all fields in a data dictionary.

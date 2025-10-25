@@ -1,55 +1,238 @@
 """Attribute conditions for evaluating config object fields.
 
-This module provides conditions that evaluate fields of configuration objects,
-enabling conditional parameters that depend on other parameter values.
-AttributeConditions are used at the top level of ConditionalSpace to ensure
-proper dependency tracking and ordered sampling.
+This module provides conditions that evaluate attributes of configuration
+objects, enabling conditional parameters that depend on other parameter values.
+
+These "attribute" conditions are used at the top level of ConditionalSpace to:
+- express dependencies ("this parameter depends on that other parameter")
+- support ordered sampling (dependent fields must be sampled after their parents)
+- validate conditional branches
+
+Key ideas:
+- FieldCondition targets a single field (possibly nested via dot notation).
+- MultiFieldLambdaCondition targets multiple fields at once.
+- Both report which top-level fields they depend on so that ConfigNode can
+  compute a safe evaluation order.
 """
 
 from abc import abstractmethod
 from collections.abc import Callable, Iterable
 import inspect
-from typing import Any
+from typing import Any, Self
 
 from .base import Condition
 
 
+class ParsedFieldPath:
+    """Parsed representation of a (possibly dotted) field path.
+
+    A field path is something like:
+        "model.optimizer.name"
+
+    We treat this as ["model", "optimizer", "name"] internally and provide:
+    - .raw   -> original string form ("model.optimizer.name")
+    - .parts -> list of path segments (["model", "optimizer", "name"])
+    - .root  -> first segment ("model")
+    - .resolve(config) -> walk the config using attribute access to get
+                          the final value, with nice error messages.
+
+    This allows us to:
+    - support nested attribute access in FieldCondition and
+      MultiFieldLambdaCondition
+    - validate existence of intermediate objects early, not just at runtime
+    """
+
+    def __init__(self, path: str) -> None:
+        """Create a parsed view of a (possibly dotted) attribute path.
+
+        The input is a string like "model.optimizer.name". We:
+        - strip whitespace,
+        - split on ".",
+        - validate there are no empty segments,
+        - store both the raw string and the individual parts.
+
+        This object is later used to:
+        - report the root dependency (first segment),
+        - resolve the path step-by-step on a config instance,
+        - produce helpful error messages if something is missing.
+
+        Args:
+            path: The attribute path to parse. May include dots for nested
+                  access (e.g. "trainer.optimizer.lr"). Must be a non-empty
+                  string; segments cannot be empty.
+
+        Raises:
+            TypeError: If `path` is not a string.
+            ValueError: If `path` is empty after stripping, or contains
+                        invalid structure like "model..optimizer".
+        """
+        if not isinstance(path, str):
+            raise TypeError(f"field_name must be str, got {type(path).__name__}")
+
+        path = path.strip()
+        if path == "":
+            raise ValueError("field_name cannot be empty")
+
+        # Support dotted access. e.g. "model.optimizer.name"
+        # -> ["model", "optimizer", "name"]
+        parts = [part.strip() for part in path.split(".")]
+
+        # Validate that we didn't get something malformed like "model..optimizer"
+        # or " model. .x "
+        for i, part in enumerate(parts):
+            if part == "":
+                raise ValueError(
+                    f"Invalid field path {path!r}: empty segment at position {i}"
+                )
+
+        self._raw = path
+        self._parts = parts
+
+    @property
+    def raw(self) -> str:
+        """Return the original dotted path string."""
+        return self._raw
+
+    @property
+    def parts(self) -> list[str]:
+        """Return a copy of individual path segments."""
+        return self._parts.copy()
+
+    @property
+    def root(self) -> str:
+        """Return the first segment of the path.
+
+        Example:
+            ParsedFieldPath("model.optimizer.name").root == "model"
+        """
+        return self._parts[0]
+
+    @property
+    def sub_path(self) -> Self:
+        """Returns a ParsedFieldPath from the sub parts."""
+        if len(self._parts) <= 1:
+            raise ValueError("No sub path available for single-segment path")
+        return ParsedFieldPath(".".join(self._parts[1:]))
+
+    def resolve(self, config: Any) -> Any:
+        """Resolve this path against a config object.
+
+        We walk attribute-by-attribute:
+            current = config
+            current = getattr(current, "model")
+            current = getattr(current, "optimizer")
+            current = getattr(current, "name")
+        etc.
+
+        Raises:
+            AttributeError: if any hop in the chain is missing.
+                The error message includes how far we got, e.g.
+                "Configuration object is missing attribute 'model.optimizer'"
+        """
+        current = config
+        walked: list[str] = []
+
+        for segment in self._parts:
+            walked.append(segment)
+
+            if not hasattr(current, segment):
+                raise AttributeError(
+                    "Configuration object is missing attribute "
+                    f"{'.'.join(walked)!r} while resolving {self._raw}"
+                )
+
+            current = getattr(current, segment)
+
+        return current
+
+    def __repr__(self) -> str:
+        return f"ParsedFieldPath({self._raw!r})"
+
+
 class AttributeCondition(Condition):
-    """Base class for conditions that evaluate config object attributes.
+    """Base class for conditions that evaluate one or more config attributes.
 
-    AttributeConditions are used in ConditionalSpace to make parameters
-    conditional on the values of other parameters. They track which fields
-    they depend on to enable proper ordering during sampling and validation.
+    AttributeConditions are used by ConditionalSpace to decide which branch
+    (true/false) is active. Unlike ObjectConditions (EqualsTo, LargerThan, ...)
+    which operate on a single *value*, AttributeConditions operate on the
+    *configuration object* itself, pulling out one or more fields and checking
+    relationships between them.
 
-    Unlike ObjectConditions which evaluate single values, AttributeConditions
-    receive the entire config object and extract the relevant field(s) to check.
+    They also expose dependency information to allow:
+    - topological sorting of fields,
+    - validation in correct order,
+    - and deterministic sampling of dependent values later.
+
+    Subclasses must implement:
+    - get_required_fields(): which top-level fields must exist before
+      this condition can be evaluated.
+    - get_required_paths(): the full dotted paths referenced by this
+      condition, as ParsedFieldPath objects.
+    - __call__(config): the boolean evaluation itself.
+    - __repr__(): The representation of the condition.
     """
 
     @abstractmethod
     def get_required_fields(self) -> set[str]:
-        """Get the set of field names this condition depends on.
+        """Return the set of top-level field names this condition depends on.
 
-        This is used for dependency tracking and topological sorting to ensure
-        that fields are sampled/validated in the correct order.
+        Why only top-level names?
+        -------------------------
+        The sampling / validation logic in ConfigNode orders fields such that
+        dependencies are resolved first. If we say a condition depends on
+        "model.optimizer.name", the only thing that must already exist at that
+        stage is `model` (the root object). After `model` is constructed,
+        nested resolution can continue.
 
         Returns:
-            Set of field names that this condition requires.
+            A set of field names that must be available on the config object
+            before this condition can safely run. Example:
+            - For "model.optimizer.name", we return {"model"}.
+            - For ["trainer.batch_size", "model.hidden_dim"], we return
+              {"trainer", "model"}.
+        """
+        pass
+
+    @abstractmethod
+    def get_required_paths(self) -> list[ParsedFieldPath]:
+        """Return the full attribute paths this condition references.
+
+        This is a stricter view than get_required_fields().
+
+        Example:
+            FieldCondition("model.optimizer.name", ...) ->
+                [ParsedFieldPath("model.optimizer.name")]
+
+            MultiFieldLambdaCondition(
+                ["trainer.batch_size", "model.hidden_dim"],
+                ...
+            ) ->
+                [
+                    ParsedFieldPath("trainer.batch_size"),
+                    ParsedFieldPath("model.hidden_dim"),
+                ]
+
+        This list will be used by ConfigNode to *deep-validate* that each hop
+        in each dotted path actually exists in the declared config structure.
         """
         pass
 
 
 class FieldCondition(AttributeCondition):
-    """Condition that evaluates a single field of a config object.
+    """Condition on a single (possibly nested) field of a config object.
 
-    FieldCondition wraps an ObjectCondition and applies it to a specific
-    field of the config object. This is the primary way to make parameters
-    conditional on other parameters.
+    This wraps an ObjectCondition (like EqualsTo, LargerThan, In, etc.) and
+    applies it to the resolved value of the specified field path.
 
-    Attributes:
-        field_name: The name of the field to evaluate.
-        condition: The ObjectCondition to apply to the field value.
+    Dependency tracking:
+    get_required_fields() will return only the root segment:
+        "model.optimizer.name" -> {"model"}
+
+    This lets ConditionalSpace know that "batch_size" depends on "model"
+    (and everything inside it), so "model" must be validated/sampled first.
 
     Examples:
+        >>> # Basic (top-level):
         >>> import spax as sp
         >>>
         >>> # Make learning_rate conditional on optimizer choice
@@ -57,17 +240,43 @@ class FieldCondition(AttributeCondition):
 
         >>> # Make dropout conditional on model size
         >>> sp.FieldCondition("num_layers", LargerThan(5, or_equals=True))
+
+
+        >>> # Nested with dot notation:
+        >>> sp.FieldCondition("model.optimizer.name", sp.EqualsTo("adam"))
     """
 
     def __init__(self, field_name: str, condition: Condition) -> None:
-        """Initialize a FieldCondition.
+        """Create a condition that applies to a single config field.
+
+        This binds an ObjectCondition (EqualsTo, LargerThan, In, etc.) to a
+        specific field on the config. The field may be nested, expressed with
+        dot notation:
+
+            FieldCondition("model.optimizer.name", EqualsTo("adam"))
+
+        At runtime, we:
+        1. Resolve config.model.optimizer.name.
+        2. Pass that value into the provided `condition`.
+        3. Use the boolean result.
+
+        The FieldCondition is also responsible for telling the system which
+        *top-level* field(s) it depends on so that conditional parameters can
+        be evaluated in the right order.
 
         Args:
-            field_name: Name of the field to evaluate.
-            condition: ObjectCondition to apply to the field value.
+            field_name:
+                The field path to inspect. Can be a simple field like "optimizer",
+                or a dotted path like "model.optimizer.name".
+            condition:
+                An ObjectCondition that will be called on the resolved value,
+                e.g. EqualsTo("adam"), LargerThan(5), In({...}), etc.
 
         Raises:
-            TypeError: If field_name is not a string or condition is not a Condition.
+            TypeError: If `field_name` is not a string or `condition` is not
+                       a Condition instance.
+            ValueError: If `field_name` is syntactically invalid (empty segment,
+                        empty string, etc.).
         """
         if not isinstance(field_name, str):
             raise TypeError(f"field_name must be str, got {type(field_name).__name__}")
@@ -76,63 +285,101 @@ class FieldCondition(AttributeCondition):
                 f"condition must be a Condition instance, got {type(condition).__name__}"
             )
 
-        self._field_name = field_name
+        # Parse and store path. This also validates the syntax of the path
+        # (no empty segments, no empty string, etc.).
+        self._field_path = ParsedFieldPath(field_name)
+
+        # Store the wrapped condition (EqualsTo, In, LargerThan, etc.).
         self._condition = condition
+
+        # Building internal paths to the leafs
+        self._required_paths: list[ParsedFieldPath] = [self._field_path]
+        if isinstance(condition, AttributeCondition):
+            for path in condition.get_required_paths():
+                self._required_paths.append(
+                    ParsedFieldPath(f"{self._field_path.raw}.{path.raw}")
+                )
 
     @property
     def field_name(self) -> str:
-        """The name of the field to evaluate."""
-        return self._field_name
+        """Return the original (raw) field path string."""
+        return self._field_path.raw
 
     @property
     def condition(self) -> Condition:
-        """The condition to apply to the field value."""
+        """Return the wrapped Condition that evaluates the field value."""
         return self._condition
 
     def get_required_fields(self) -> set[str]:
-        """Get the field this condition depends on.
+        """Return the top-level dependency set for this condition.
 
-        Returns:
-            Set containing the single field name.
+        Example:
+            FieldCondition("model.optimizer.name", ...) -> {"model"}
         """
-        return {self._field_name}
+        return {self._field_path.root}
+
+    def get_required_paths(self) -> list[ParsedFieldPath]:
+        """Return the single ParsedFieldPath that this condition inspects."""
+        return self._required_paths.copy()
 
     def __call__(self, config: Any) -> bool:
-        """Evaluate the condition on a config object's field.
+        """Evaluate the condition on the given config object.
 
-        Args:
-            config: The config object to evaluate.
-
-        Returns:
-            True if the condition is satisfied for the field value.
+        Steps:
+        1. Resolve the field path on the config (with detailed error messages
+           if something is missing).
+        2. Apply the wrapped ObjectCondition to that value.
+        3. Return the boolean result.
 
         Raises:
-            AttributeError: If the config object doesn't have the specified field.
+            AttributeError: if any hop in the dotted path does not exist.
+            TypeError / ValueError: if the underlying ObjectCondition raises.
         """
-        if not hasattr(config, self._field_name):
-            raise AttributeError(
-                f"Configuration object has no field '{self._field_name}'"
-            )
-
-        field_value = getattr(config, self._field_name)
-        return self._condition(field_value)
+        value = self._field_path.resolve(config)
+        return self._condition(value)
 
     def __repr__(self) -> str:
         return (
-            f"FieldCondition(field='{self._field_name}', condition={self._condition!r})"
+            f"FieldCondition(field='{self.field_name}', condition={self._condition!r})"
         )
 
 
 class MultiFieldLambdaCondition(AttributeCondition):
-    """Condition that evaluates multiple fields using a custom function.
+    """Condition on multiple (possibly nested) fields using a custom function.
 
-    MultiFieldLambdaCondition allows complex conditions that depend on
-    multiple parameter values. The function receives the field values as
-    keyword arguments and returns a boolean.
+    This is for expressing relationships between *several* parameters.
 
-    Attributes:
-        field_names: Set of field names this condition depends on.
-        func: The function that evaluates the condition.
+    You pass:
+        - field_names: an iterable of field paths (each may be dotted)
+        - func: a callable that takes ONE positional argument: a dict
+
+    At runtime we:
+        1. Resolve each field path against the config.
+        2. Build a dict that maps the *raw* field path string to its value.
+           Example:
+               {
+                   "model.optimizer.name": "adam",
+                   "model.hidden_dim": 256,
+               }
+        3. Call:  func(data_dict)
+        4. Expect a boolean result.
+
+    This is different from the previous API, where we tried to map field names
+    to kwargs using parameter names. This new version:
+    - is simpler
+    - is more explicit
+    - avoids ambiguity when two paths end with the same leaf name
+      (e.g. "model.size" and "dataset.size")
+
+    Dependency tracking
+    -------------------
+    get_required_fields() returns the set of ROOT segments for all provided
+    paths. For example:
+        field_names = ["trainer.batch_size", "model.hidden_dim"]
+        -> get_required_fields() == {"trainer", "model"}
+
+    That tells ConditionalSpace that any parameter depending on this condition
+    can only be evaluated *after* both trainer and model are available.
 
     Examples:
         >>> import spax as sp
@@ -140,30 +387,70 @@ class MultiFieldLambdaCondition(AttributeCondition):
         >>> # Condition based on two fields
         >>> sp.MultiFieldLambdaCondition(
         ...     ["batch_size", "num_layers"],
-        ...     lambda batch_size, num_layers: batch_size * num_layers < 1000
+        ...     lambda data: data["batch_size"] * data["num_layers"] < 1000
         ... )
 
-        >>> # Condition with three fields
+        >>> # Condition with nested fields
         >>> sp.MultiFieldLambdaCondition(
-        ...     ["optimizer", "learning_rate", "weight_decay"],
-        ...     lambda optimizer, learning_rate, weight_decay:
-        ...         optimizer == "adam" and learning_rate > 0.001
+        ...     ["optimizer.name", "learning_rate"],
+        ...     lambda data: data["optimizer.name"] == "adam" and data["learning_rate"] > 0.001
         ... )
     """
 
     def __init__(self, field_names: Iterable[str], func: Callable[..., bool]) -> None:
-        """Initialize a MultiFieldLambdaCondition.
+        """Create a condition over multiple config fields at once.
+
+        This lets you express relationships between several parameters.
+
+        You provide:
+            field_names = [
+                "model.optimizer.name",
+                "model.hidden_dim",
+                "trainer.batch_size",
+            ]
+
+            func = lambda data: (
+                data["model.optimizer.name"] == "adam"
+                and data["model.hidden_dim"] >= 256
+                and data["trainer.batch_size"] < 512
+            )
+
+        During evaluation:
+        1. Each field path is resolved on the config (with nested dot access).
+        2. We build a dict mapping each raw path string to its resolved value.
+           For example:
+               {
+                   "model.optimizer.name": "adam",
+                   "model.hidden_dim": 256,
+                   "trainer.batch_size": 128,
+               }
+        3. We call `func(data_dict)` and expect a bool.
+
+        This design:
+        - avoids ambiguity when two different paths end in the same leaf name
+          (e.g. "model.size" and "dataset.size"),
+        - makes the user function signature simple: just one positional arg,
+          a dict of resolved values by path.
+
+        The condition also exposes dependency information to the system:
+        it reports that it depends on each *root* segment of the paths
+        ("model", "trainer", ...), which is used for correct sampling/validation
+        ordering in ConditionalSpace.
 
         Args:
-            field_names: Iterable of field names the function depends on.
-            func: Callable that takes field values as kwargs and returns bool.
-                The function signature must exactly match field_names.
+            field_names:
+                Iterable of field paths (each may be dotted, e.g.
+                "model.optimizer.name"). Must not be empty.
+            func:
+                A callable that will be invoked as `func(data_dict)` where
+                `data_dict` is {raw_path: resolved_value, ...}.
+                Must return a bool.
 
         Raises:
-            TypeError: If field_names is not iterable, contains non-strings,
-                or func is not callable.
-            ValueError: If field_names is empty, contains duplicates, or
-                function signature doesn't match field_names.
+            TypeError: If `field_names` is not an iterable of strings, or if
+                       `func` is not callable.
+            ValueError: If `field_names` is empty, or any provided path is
+                        syntactically invalid (empty segments, etc.).
         """
         # Validate field_names is iterable but not a string
         if not isinstance(field_names, Iterable) or isinstance(field_names, str):
@@ -171,83 +458,84 @@ class MultiFieldLambdaCondition(AttributeCondition):
                 f"Expected an iterable for field_names, got {type(field_names).__name__}"
             )
 
-        unique_field_names = set(field_names)
+        # We'll keep both the original strings (to expose via .field_names and to
+        # present to the callback), and their parsed versions for resolution.
+        parsed_paths: dict[str, ParsedFieldPath] = {}
+        for raw in field_names:
+            parsed_paths[raw] = ParsedFieldPath(raw)
 
-        if not unique_field_names:
+        if not parsed_paths:
             raise ValueError("field_names cannot be empty")
-
-        # Validate all field names are strings
-        for name in unique_field_names:
-            if not isinstance(name, str):
-                raise TypeError(
-                    f"All field names must be strings, got {type(name).__name__}"
-                )
-
-        # Check for duplicates
-        if len(unique_field_names) != len(list(field_names)):
-            raise ValueError("field_names cannot contain duplicates")
-
-        field_names = unique_field_names
 
         if not callable(func):
             raise TypeError(f"func must be callable, got {type(func).__name__}")
 
-        # Validate function signature matches field names
-        try:
-            sig = inspect.signature(func)
-            params = set(sig.parameters.keys())
-            if params != field_names:
-                raise ValueError(
-                    f"Function parameters {params} must match field_names {field_names} "
-                )
-        except (ValueError, TypeError) as e:
-            raise TypeError(f"Could not validate function signature: {e}") from e
+        # Store:
+        # - _paths: map raw field path -> ParsedFieldPath
+        # - _field_names: set[str] of raw field paths
+        # - _func: the user-supplied callable
+        #
+        # We are intentionally NOT validating the callable's signature anymore.
+        # Instead, we treat it as func(data_dict) and let runtime errors surface
+        # naturally if the user gives an incompatible function.
+        self._paths = parsed_paths
+        self._field_names = set(parsed_paths.keys())
 
-        self._field_names = field_names
+        if len(self._field_names) != len(field_names):
+            raise ValueError("field_names cannot contain duplicates")
+
         self._func = func
 
     @property
     def field_names(self) -> set[str]:
-        """The set of field names this condition depends on."""
+        """Return the set of raw field path strings this condition depends on."""
         return self._field_names.copy()
 
     @property
     def func(self) -> Callable[..., bool]:
-        """The function that evaluates the condition."""
+        """Return the user-provided callable."""
         return self._func
 
     def get_required_fields(self) -> set[str]:
-        """Get the fields this condition depends on.
+        """Return the set of top-level root fields required by this condition.
 
-        Returns:
-            Set of all field names used by this condition.
+        Example:
+            field_names = {"model.optimizer.name", "trainer.batch_size"}
+            -> returns {"model", "trainer"}
         """
-        return self._field_names.copy()
+        return {p.root for p in self._paths.values()}
+
+    def get_required_paths(self) -> list[ParsedFieldPath]:
+        """Return all ParsedFieldPath objects this condition inspects.
+
+        The order is deterministic (sorted by raw path) so that callers that
+        care about stability (like hashing or error messages) get consistent
+        behavior.
+        """
+        # sort by raw path for determinism
+        return [self._paths[raw] for raw in sorted(self._paths.keys())]
 
     def __call__(self, config: Any) -> bool:
-        """Evaluate the condition on a config object.
+        """Evaluate this condition against a config object.
 
-        Args:
-            config: The config object to evaluate.
-
-        Returns:
-            True if the condition is satisfied.
+        Steps:
+        1. Resolve each requested field path against the config.
+        2. Build a dict mapping the raw path -> resolved value.
+        3. Call the provided function with that dict as a single positional arg.
+        4. Ensure the result is boolean.
 
         Raises:
-            AttributeError: If the config object is missing any required field.
-            TypeError: If the function doesn't return a bool.
+            AttributeError: if any referenced path isn't resolvable.
+            TypeError: if the callback doesn't return a bool.
         """
-        # Extract field values
-        kwargs = {}
-        for field_name in self._field_names:
-            if not hasattr(config, field_name):
-                raise AttributeError(
-                    f"Configuration object has no field '{field_name}'"
-                )
-            kwargs[field_name] = getattr(config, field_name)
+        data: dict[str, Any] = {}
+        for raw_name, path in self._paths.items():
+            data[raw_name] = path.resolve(config)
 
-        # Call function with kwargs
-        result = self._func(**kwargs)
+        # User function now must accept exactly one positional argument
+        # (or be compatible with that), and return bool.
+        result = self._func(data)
+
         if not isinstance(result, bool):
             raise TypeError(
                 f"Lambda function must return bool, got {type(result).__name__}"
@@ -255,10 +543,14 @@ class MultiFieldLambdaCondition(AttributeCondition):
         return result
 
     def __repr__(self) -> str:
-        """Return a string representation with function signature."""
+        # We try to include the callable's signature where possible, but
+        # this is just for debug / readability.
         try:
             sig = inspect.signature(self._func)
             func_name = getattr(self._func, "__name__", "<lambda>")
-            return f"MultiFieldLambdaCondition(fields={self._field_names}, func={func_name}{sig})"
+            return (
+                "MultiFieldLambdaCondition("
+                f"fields={self._field_names}, func={func_name}{sig})"
+            )
         except (ValueError, TypeError):
             return f"MultiFieldLambdaCondition(fields={self._field_names})"

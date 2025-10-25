@@ -52,6 +52,7 @@ from .conditions import (
     NotIn,
     ObjectCondition,
     Or,
+    ParsedFieldPath,
     SmallerThan,
 )
 from .factory import infer_space_from_field_info
@@ -77,6 +78,8 @@ __all__ = [
     "Conditional",
     # Conditional spaces - Class
     "ConditionalSpace",
+    # Conditions - Paths
+    "ParsedFieldPath",
     # Conditions - Base classes
     "Condition",
     "AttributeCondition",

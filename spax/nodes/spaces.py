@@ -10,14 +10,15 @@ import json
 from typing import Any
 
 from spax.spaces import (
+    UNSET,
     CategoricalSpace,
     ConditionalSpace,
     FloatSpace,
     IntSpace,
     NumberSpace,
+    ParsedFieldPath,
     Space,
 )
-from spax.spaces.base import UNSET
 
 from .base import Node
 from .fixed import FixedNode
@@ -596,6 +597,21 @@ class ConditionalNode(SpaceNode):
     def dependencies(self) -> set[str]:
         """Set of field names this condition depends on."""
         return self._space.condition.get_required_fields()
+
+    @property
+    def required_paths(self) -> list[ParsedFieldPath]:
+        """
+        Full dotted paths used by the underlying AttributeCondition.
+
+        Example:
+            If the condition was something like
+            FieldCondition("model.optimizer.name", ...),
+            this returns [ParsedFieldPath("model.optimizer.name")].
+
+            For MultiFieldLambdaCondition with many paths, this returns
+            all of them.
+        """
+        return self._space.condition.get_required_paths()
 
     def apply_override(self, override: Any) -> Node:
         """Apply overrides to the true and/or false branches.

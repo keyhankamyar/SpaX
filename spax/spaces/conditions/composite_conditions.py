@@ -41,7 +41,7 @@ Examples:
 from collections.abc import Iterable
 from typing import Any
 
-from .attribute_conditions import AttributeCondition
+from .attribute_conditions import AttributeCondition, ParsedFieldPath
 from .base import Condition
 
 
@@ -156,6 +156,16 @@ class And(CompositeCondition):
 
         return required_fields
 
+    def get_required_paths(self) -> list[ParsedFieldPath]:
+        """Return all required paths from all child AttributeConditions."""
+        required_paths: list[ParsedFieldPath] = []
+
+        for cond in self._conditions:
+            if isinstance(cond, AttributeCondition):
+                required_paths.extend(cond.get_required_paths())
+
+        return required_paths
+
     def __call__(self, value: Any) -> bool:
         """Evaluate all child conditions with AND logic.
 
@@ -266,6 +276,16 @@ class Or(CompositeCondition):
 
         return required_fields
 
+    def get_required_paths(self) -> list[ParsedFieldPath]:
+        """Return all required paths from all child AttributeConditions."""
+        required_paths: list[ParsedFieldPath] = []
+
+        for cond in self._conditions:
+            if isinstance(cond, AttributeCondition):
+                required_paths.extend(cond.get_required_paths())
+
+        return required_paths
+
     def __call__(self, value: Any) -> bool:
         """Evaluate all child conditions with OR logic.
 
@@ -357,6 +377,13 @@ class Not(CompositeCondition):
             )
 
         return self._condition.get_required_fields()
+
+    def get_required_paths(self) -> list[ParsedFieldPath]:
+        """Return all required paths from the wrapped AttributeCondition."""
+        if not isinstance(self._condition, AttributeCondition):
+            return []
+
+        return self._condition.get_required_paths()
 
     def __call__(self, value: Any) -> bool:
         """Evaluate the child condition and negate the result.
