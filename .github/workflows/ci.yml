@@ -24,10 +24,10 @@ jobs:
             python-version: "3.12"
             cache: pip
 
-      - name: Install dev tools
+      - name: Install full deps for lint/typecheck
         run: |
           python -m pip install -U pip
-          python -m pip install -e ".[dev]"  # installs black, ruff, mypy, pytest, etc.
+          python -m pip install -e ".[dev,all]"
 
       - name: Ruff (lint)
         run: ruff check .
@@ -57,9 +57,7 @@ jobs:
       - name: Install package (with test extras)
         run: |
           python -m pip install -U pip
-          # install project in editable mode + dev deps + YAML/TOML extras used in serialization tests
-          python -m pip install -e ".[dev,yaml,toml]"
-          # (intentionally NOT installing optuna; TrialSampler tests work without it)
+          python -m pip install -e ".[dev,all]"
 
       - name: Pytest
         run: |
