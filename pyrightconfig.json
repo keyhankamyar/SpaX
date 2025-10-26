@@ -1,5 +1,22 @@
 {
     "exclude": [
-        "**/.conda"
+        "**/__pycache__",
+        "**/.pytest_cache",
+        "**/.ruff_cache",
+        "**/.mypy_cache",
+        "**/.tox",
+        "**/.nox",
+        "**/.eggs",
+        "**/.conda",
+        "**/.venv",
+        "**/venv",
+        "**/env",
+        "**/build",
+        "**/dist",
+        "**/.git",
+        "**/.github",
+        "**/.idea",
+        "**/.vscode",
+        "**/node_modules"
     ]
 }
