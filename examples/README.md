@@ -61,15 +61,17 @@ Save and load configurations in multiple formats:
 
 ---
 
-### 🚧 04. HPO with Optuna (Coming Soon)
+### ✅ 04. HPO with Optuna
 **File:** `04_hpo_with_optuna.ipynb`
 
-Integrate SpaX with Optuna for sophisticated hyperparameter optimization:
-- Complete Optuna integration workflow
-- Writing objective functions with SpaX configs
-- Pruning strategies and conditional search spaces
-- Analyzing optimization results
-- Best practices for large-scale HPO
+Seamless Optuna integration - all SpaX features work automatically:
+- One-line integration pattern: `Config.from_trial(trial)`
+- Conditional parameters with automatic dependency handling
+- Nested configs in hyperparameter optimization
+- Polymorphic fields (Union types) with Optuna
+- Complete workflow and best practices
+
+**Perfect for:** Running type-safe HPO with complex configuration spaces
 
 ---
 
