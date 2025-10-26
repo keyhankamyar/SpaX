@@ -120,7 +120,7 @@ class ConditionalSpace(Space[Any]):
         ...     optimizer: str = sp.Conditional(
         ...         sp.MultiFieldLambdaCondition(
         ...             ["batch_size", "grad_accum"],
-        ...             lambda bs, ga: bs * ga > 64
+        ...             lambda data: data["batch_size"] * data["grad_accum"] > 64
         ...         ),
         ...         true="adam",
         ...         false="sgd"
