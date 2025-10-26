@@ -93,7 +93,8 @@ class NumberNode(SpaceNode):
 
         Args:
             override: Either a numeric value (fixes to that value) or a dict
-                with bound keys (gt/ge/lt/le) to narrow the range.
+                with bound keys (gt/ge/lt/le) to narrow the range, or a list
+                of choices to morph the space into categorical.
 
         Returns:
             FixedNode if override is a single value, or NumberNode with
@@ -103,6 +104,7 @@ class NumberNode(SpaceNode):
             ValueError: If override is invalid or outside original bounds.
             TypeError: If override has wrong type.
         """
+
         # Case 1: Single value -> FixedNode
         if isinstance(override, (int, float)):
             # Validate the value is within original bounds
@@ -114,7 +116,33 @@ class NumberNode(SpaceNode):
                 ) from e
             return FixedNode(default=override)
 
-        # Case 2: Dict with bounds
+        kwargs: dict[str, Any] = {"description": self._space.description}
+        current_default = self._space.default
+
+        # Case 2: List of values -> CategoricalNode
+        if isinstance(override, list):
+            if not override:
+                raise ValueError("Got empty override for NumberNode")
+
+            if len(override) == 1:
+                return self.apply_override(override[0])
+
+            # Validate each value is within original bounds
+            for item in override:
+                try:
+                    item = self._space.validate(item)
+                except ValueError as e:
+                    raise ValueError(
+                        f"Override choice {item} is not valid for this space: {e}"
+                    ) from e
+
+            # Preserve default if it's still valid
+            if current_default is not UNSET and current_default in override:
+                kwargs["default"] = current_default
+
+            return CategoricalNode(CategoricalSpace(choices=override, **kwargs))
+
+        # Case 3: Dict with bounds
         if not isinstance(override, dict):
             raise TypeError(
                 f"Override must be a numeric value or dict with bounds, "
@@ -130,11 +158,8 @@ class NumberNode(SpaceNode):
             )
 
         # Create new space with override bounds
-        kwargs = {
-            **override,
-            "distribution": self._space.distribution,
-            "description": self._space.description,
-        }
+        kwargs["distribution"] = self._space.distribution
+        kwargs.update(override)
 
         new_space: Space
         if isinstance(self._space, IntSpace):
@@ -149,10 +174,10 @@ class NumberNode(SpaceNode):
             )
 
         # Preserve default if it's still valid
-        if self._space.default is not UNSET:
+        if current_default is not UNSET:
             try:
-                new_space.validate(self._space.default)
-                new_space.default = self._space.default
+                new_space.validate(current_default)
+                new_space.default = current_default
             except Exception:
                 pass
 

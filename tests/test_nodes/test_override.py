@@ -50,6 +50,51 @@ def test_number_override_narrow_range():
     assert new_node._children["value"]._space.high_inclusive is True
 
 
+def test_number_override_categorical():
+    """Test overriding a numeric space to narrow its range."""
+
+    class SimpleConfig(sp.Config):
+        value: int = sp.Int(ge=0, le=100)
+
+    override = {"value": [1, 3, 5, 7, 8]}
+    new_node = SimpleConfig._node.apply_override(override)
+
+    from spax.nodes import CategoricalNode, FixedNode
+
+    assert isinstance(new_node._children["value"], CategoricalNode)
+    for child in new_node._children["value"]._children.values():
+        assert isinstance(child, FixedNode)
+        assert child.default in [1, 3, 5, 7, 8]
+
+    class SimpleConfig2(sp.Config):
+        value: float = sp.Float(ge=-1, le=1)
+
+    override = {"value": [-0.9, -0.5, 0.0, 0.5, 0.9]}
+    new_node = SimpleConfig2._node.apply_override(override)
+
+    from spax.nodes import CategoricalNode, FixedNode
+
+    assert isinstance(new_node._children["value"], CategoricalNode)
+    for child in new_node._children["value"]._children.values():
+        assert isinstance(child, FixedNode)
+        assert child.default in [-0.9, -0.5, 0.0, 0.5, 0.9]
+
+
+def test_number_override_categorical_single_value():
+    """Test overriding a numeric space to narrow its range."""
+
+    class SimpleConfig(sp.Config):
+        value: int = sp.Int(ge=0, le=100)
+
+    override = {"value": [1]}
+    new_node = SimpleConfig._node.apply_override(override)
+
+    from spax.nodes import FixedNode
+
+    assert isinstance(new_node._children["value"], FixedNode)
+    assert new_node._children["value"].default == 1
+
+
 def test_number_override_out_of_bounds():
     """Test that overriding outside original bounds raises an error."""
 
@@ -72,6 +117,21 @@ def test_number_override_invalid_value():
 
     with pytest.raises(ValueError, match="not valid for this space"):
         SimpleConfig._node.apply_override({"value": 200})
+
+
+def test_number_override_invalid_categorical():
+    """Test overriding a numeric space to narrow its range."""
+
+    class SimpleConfig(sp.Config):
+        value: int = sp.Int(ge=0, le=100)
+
+    override = {"value": [-5, -4, 5, 99]}
+    with pytest.raises(ValueError, match="Override choice"):
+        SimpleConfig._node.apply_override(override)
+
+    override = {"value": []}
+    with pytest.raises(ValueError, match="Got empty override for NumberNode"):
+        SimpleConfig._node.apply_override(override)
 
 
 def test_categorical_override_to_fixed():
