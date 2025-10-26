@@ -32,14 +32,18 @@ Master conditional parameters - one of SpaX's most powerful features:
 
 ---
 
-### 🚧 02. Nested Configurations (Coming Soon)
-**File:** `02_nested_configurations.ipynb`
+### ✅ 02. Nested Configs, Modularity, and Inheritance
+**File:** `02_nested_modular_configs_and_inheritance.ipynb`
 
-Build complex configurations from modular components:
-- Composing configs from smaller pieces
-- Hierarchical configuration structures
-- Reusing configuration components
-- Best practices for large-scale configs
+Build complex configurations from modular, reusable components:
+- Nested configs for separation of concerns
+- Inheritance to create specialized variants
+- Polymorphic fields (Union types) for flexible architectures
+- Deep nesting with multi-level hierarchies
+- Conditional logic on deeply nested fields
+- Real-world patterns for production ML configs
+
+**Perfect for:** Building maintainable configurations for complex ML systems
 
 ---
 
