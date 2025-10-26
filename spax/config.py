@@ -292,6 +292,50 @@ class Config(BaseModel, validate_assignment=True):
         """
         return cls._node.get_override_template()
 
+    @classmethod
+    def get_tree(cls, override: dict[str, Any] | None = None) -> str:
+        """Get an ASCII tree visualization of the configuration structure.
+
+        Creates a human-readable tree representation showing the hierarchical
+        structure of the configuration space, including field names, types,
+        ranges, choices, and conditional dependencies.
+
+        Args:
+            override: Optional dictionary of overrides to apply before visualization.
+                This allows you to visualize a narrowed search space.
+
+        Returns:
+            Multi-line string with ASCII tree drawing using box-drawing characters
+            (├─, └─, │) to show structure.
+
+        Examples:
+            >>> class MyConfig(sp.Config):
+            ...     lr: float = sp.Float(ge=1e-5, le=1e-1)
+            ...     layers: int = sp.Int(ge=1, le=10)
+            ...     optimizer: str = sp.Categorical(["adam", "sgd", "rmsprop"])
+            ...
+            >>> print(MyConfig.get_tree())
+            MyConfig
+            ├─ lr: Float([1e-05, 0.1], uniform)
+            ├─ layers: Int([1, 10], uniform)
+            └─ optimizer: Categorical
+                ├─ 'adam'
+                ├─ 'sgd'
+                └─ 'rmsprop'
+
+            >>> # With overrides
+            >>> print(MyConfig.get_tree(override={"layers": {"ge": 5, "le": 7}}))
+            MyConfig
+            ├─ lr: Float([1e-05, 0.1], uniform)
+            ├─ layers: Int([5, 7], uniform)
+            └─ optimizer: Categorical
+                ├─ 'adam'
+                ├─ 'sgd'
+                └─ 'rmsprop'
+        """
+        node = cls.get_node(override)
+        return node.get_tree()
+
     def model_dump(self) -> dict[str, Any]:  # type: ignore
         """Serialize the configuration to a dictionary.
 

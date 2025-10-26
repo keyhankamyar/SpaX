@@ -42,7 +42,7 @@ from collections.abc import Iterable
 from typing import Any
 
 from .attribute_conditions import AttributeCondition, ParsedFieldPath
-from .base import Condition
+from .base import Condition, NotGiven, _NotGiven
 
 
 class CompositeCondition(AttributeCondition):
@@ -127,6 +127,34 @@ class And(CompositeCondition):
     def conditions(self) -> list[Condition]:
         """Get a copy of the child conditions."""
         return self._conditions.copy()
+
+    def render(self, field_name: str | _NotGiven = NotGiven) -> str:
+        """Render as 'condition1 AND condition2 AND ...'.
+
+        If field_name is NotGiven (top-level), delegates to each child's render()
+        without additional context. If field_name is provided (nested), passes it
+        to each child for proper prefixing.
+
+        Args:
+            field_name: Optional external context for nested rendering.
+
+        Returns:
+            Space-separated AND-joined string of all child conditions.
+        """
+        parts: list[str] = []
+        if field_name is NotGiven:
+            # top-level AND
+            for cond in self._conditions:
+                assert isinstance(cond, AttributeCondition), (
+                    "Top-level AND should only join AttributeConditions"
+                )
+                parts.append(cond.render())
+        else:
+            assert isinstance(field_name, str)
+            # nested: prefix all children with field_name
+            for cond in self._conditions:
+                parts.append(cond.render(field_name))
+        return " AND ".join(parts)
 
     def get_required_fields(self) -> set[str]:
         """Get all fields required by child conditions.
@@ -248,6 +276,34 @@ class Or(CompositeCondition):
         """Get a copy of the child conditions."""
         return self._conditions.copy()
 
+    def render(self, field_name: str | _NotGiven = NotGiven) -> str:
+        """Render as 'condition1 OR condition2 OR ...'.
+
+        If field_name is NotGiven (top-level), delegates to each child's render()
+        without additional context. If field_name is provided (nested), passes it
+        to each child for proper prefixing.
+
+        Args:
+            field_name: Optional external context for nested rendering.
+
+        Returns:
+            Space-separated OR-joined string of all child conditions.
+        """
+        parts: list[str] = []
+        if field_name is NotGiven:
+            # top-level OR
+            for cond in self._conditions:
+                assert isinstance(cond, AttributeCondition), (
+                    "Top-level OR should only join AttributeConditions"
+                )
+                parts.append(cond.render())
+        else:
+            assert isinstance(field_name, str)
+            # nested: prefix all children with field_name
+            for cond in self._conditions:
+                parts.append(cond.render(field_name))
+        return " OR ".join(parts)
+
     def get_required_fields(self) -> set[str]:
         """Get all fields required by child conditions.
 
@@ -353,6 +409,30 @@ class Not(CompositeCondition):
     def condition(self) -> Condition:
         """Get the child condition being negated."""
         return self._condition
+
+    def render(self, field_name: str | _NotGiven = NotGiven) -> str:
+        """Render as 'NOT (inner_condition)'.
+
+        If field_name is NotGiven (top-level), delegates to the child's render()
+        without additional context. If field_name is provided (nested), passes it
+        to the child for proper prefixing. Wraps result in NOT (...).
+
+        Args:
+            field_name: Optional external context for nested rendering.
+
+        Returns:
+            Negated condition string with NOT prefix and parentheses.
+        """
+        inner = self._condition
+        if field_name is NotGiven:
+            assert isinstance(inner, AttributeCondition), (
+                "NOT on an ObjectCondition needs a field_name scope"
+            )
+            rendered = inner.render()
+        else:
+            assert isinstance(field_name, str)
+            rendered = inner.render(field_name)
+        return f"NOT ({rendered})"
 
     def get_required_fields(self) -> set[str]:
         """Get all fields required by the child condition.

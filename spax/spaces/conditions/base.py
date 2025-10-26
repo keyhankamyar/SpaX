@@ -8,6 +8,18 @@ from abc import ABC, abstractmethod
 from typing import Any
 
 
+class _NotGiven:
+    """
+    Sentinel class to represent an unset or undefined field name.
+    """
+
+    def __repr__(self) -> str:
+        return "NotGiven"
+
+
+NotGiven = _NotGiven()
+
+
 class Condition(ABC):
     """Abstract base class for all conditions.
 
@@ -39,5 +51,20 @@ class Condition(ABC):
 
         Returns:
             A string describing this condition for debugging and logging.
+        """
+        pass
+
+    @abstractmethod
+    def render(self, field_name: str) -> str:
+        """Generate a human-readable string representation of this condition.
+
+        Used internally for debugging, logging, and displaying conditional
+        dependencies in tree visualizations.
+
+        Args:
+            field_name: The field name this condition is evaluating.
+
+        Returns:
+            String representation like "field_name == 'value'" or "field_name > 5".
         """
         pass

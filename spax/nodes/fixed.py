@@ -151,3 +151,34 @@ class FixedNode(Node):
             None, indicating that overrides are not supported.
         """
         return None
+
+    def _tree_lines(
+        self,
+        prefix: str,
+        is_last: bool,
+        field_name: str | None,
+        is_root: bool,
+    ) -> list[str]:
+        """Generate tree lines for a fixed value node.
+
+        Renders as a single line showing the field name and its fixed value.
+        Fixed nodes are leaf nodes and don't have children.
+
+        Args:
+            prefix: Line prefix for indentation.
+            is_last: Whether this is the last sibling (determines branch character).
+            field_name: The field name, or None for categorical choices.
+            is_root: Must be False (FixedNode cannot be root).
+
+        Returns:
+            Single-element list with the formatted line.
+        """
+        assert not is_root, "FixedNode cannot be root"
+
+        branch = "└─ " if is_last else "├─ "
+        label = repr(self.get_default())
+        if field_name:
+            line = f"{prefix}{branch}{field_name}: {label}"
+        else:
+            line = f"{prefix}{branch}{label}"
+        return [line]

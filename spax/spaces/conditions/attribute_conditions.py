@@ -20,7 +20,7 @@ from collections.abc import Callable, Iterable
 import inspect
 from typing import Any
 
-from .base import Condition
+from .base import Condition, NotGiven, _NotGiven
 
 
 class ParsedFieldPath:
@@ -217,6 +217,24 @@ class AttributeCondition(Condition):
         """
         pass
 
+    @abstractmethod
+    def render(self, field_name: str | _NotGiven = NotGiven) -> str:
+        """Generate a human-readable string representation of this condition.
+
+        AttributeConditions can be rendered with or without an external field_name
+        context. When field_name is NotGiven, the condition renders its own
+        internal field references. When field_name is provided, it's used as
+        a prefix for nested contexts (e.g., inside composite conditions).
+
+        Args:
+            field_name: Optional external field name context. Use NotGiven for
+                top-level rendering where the condition knows its own fields.
+
+        Returns:
+            String representation of the condition logic.
+        """
+        pass
+
 
 class FieldCondition(AttributeCondition):
     """Condition on a single (possibly nested) field of a config object.
@@ -309,6 +327,25 @@ class FieldCondition(AttributeCondition):
     def condition(self) -> Condition:
         """Return the wrapped Condition that evaluates the field value."""
         return self._condition
+
+    def render(self, field_name: str | _NotGiven = NotGiven) -> str:
+        """Render the wrapped condition with the appropriate field path.
+
+        If field_name is NotGiven (top-level), uses this condition's own field_path.
+        If field_name is provided (nested context), prefixes the field_path with it.
+
+        Args:
+            field_name: Optional external context. NotGiven for top-level rendering.
+
+        Returns:
+            String representation delegated to the wrapped condition.
+        """
+        if field_name is NotGiven:
+            full_path = self._field_path.raw
+        else:
+            # nested case
+            full_path = f"{field_name}.{self._field_path.raw}"
+        return self._condition.render(full_path)
 
     def get_required_fields(self) -> set[str]:
         """Return the top-level dependency set for this condition.
@@ -495,6 +532,21 @@ class MultiFieldLambdaCondition(AttributeCondition):
     def func(self) -> Callable[..., bool]:
         """Return the user-provided callable."""
         return self._func
+
+    def render(self, field_name: str | _NotGiven = NotGiven) -> str:  # noqa: ARG002
+        """Render as 'lambda data' indicating multi-field custom logic.
+
+        Cannot show the actual lambda body or field mappings in a concise way,
+        so this serves as a marker that custom evaluation logic operates on
+        multiple fields.
+
+        Args:
+            field_name: Unused for multi-field conditions (they know their own fields).
+
+        Returns:
+            Generic lambda indicator string.
+        """
+        return "lambda data"
 
     def get_required_fields(self) -> set[str]:
         """Return the set of top-level root fields required by this condition.

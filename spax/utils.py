@@ -1,7 +1,7 @@
-"""Utility functions for SpaX.
+"""
+Utility functions for SpaX.
 
-This module provides helper functions used throughout the SpaX library,
-particularly for type checking, validation, and type annotation processing.
+This module provides helper functions used throughout the SpaX library.
 """
 
 from types import UnionType
@@ -120,3 +120,19 @@ def type_from_annotation(annotation: Any, type_name: str) -> type | None:
         return annotation
 
     return None
+
+
+def child_tree_prefix(prefix: str, is_last: bool) -> str:
+    """Calculate the prefix for rendering child nodes in ASCII tree.
+
+    Determines whether to add vertical guide characters (│) or spaces
+    based on whether the parent node is the last sibling.
+
+    Args:
+        prefix: The current line prefix from parent.
+        is_last: Whether the parent node is the last child in its level.
+
+    Returns:
+        Extended prefix for child nodes: prefix + "   " if last, else prefix + "│  ".
+    """
+    return prefix + ("   " if is_last else "│  ")

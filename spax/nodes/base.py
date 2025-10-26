@@ -114,3 +114,59 @@ class Node(ABC):
             this node cannot be overridden (e.g., FixedNode).
         """
         pass
+
+    @abstractmethod
+    def _tree_lines(
+        self,
+        prefix: str,
+        is_last: bool,
+        field_name: str | None,
+        is_root: bool,
+    ) -> list[str]:
+        """Generate ASCII tree representation lines for this node.
+
+        Internal method used by get_tree() to recursively build tree visualization.
+        Each node type implements its own rendering logic while maintaining
+        consistent tree structure formatting.
+
+        Args:
+            prefix: The line prefix for proper indentation (contains │ and spaces).
+            is_last: Whether this node is the last child at its level (affects
+                branching characters: └─ vs ├─).
+            field_name: The field name for this node, or None for choice values.
+            is_root: Whether this is the root ConfigNode (no branch character).
+
+        Returns:
+            List of strings, each representing one line of the tree visualization.
+        """
+        pass
+
+    def get_tree(self) -> str:
+        """Generate a complete ASCII tree visualization of this node's structure.
+
+        Creates a human-readable tree representation showing the hierarchical
+        structure of the configuration space, including field names, types,
+        ranges, choices, and conditional dependencies.
+
+        Returns:
+            Multi-line string with ASCII tree drawing using box-drawing characters
+            (├─, └─, │) to show structure.
+
+        Examples:
+            >>> class MyConfig(sp.Config):
+            ...     lr: float = sp.Float(ge=1e-5, le=1e-1)
+            ...     layers: int = sp.Int(ge=1, le=10)
+            ...
+            >>> print(MyConfig._node.get_tree())
+            MyConfig
+            ├─ lr: Float([1e-05, 0.1], log)
+            └─ layers: Int([1, 10], uniform)
+        """
+        # Root is rendered specially (no "├─" prefix etc.)
+        lines = self._tree_lines(
+            prefix="",
+            is_last=True,
+            field_name=None,
+            is_root=True,
+        )
+        return "\n".join(lines)

@@ -19,6 +19,7 @@ from spax.spaces import (
     ParsedFieldPath,
     Space,
 )
+from spax.utils import child_tree_prefix
 
 from .base import Node
 from .fixed import FixedNode
@@ -265,6 +266,46 @@ class NumberNode(SpaceNode):
             template["lt"] = space.high
 
         return template
+
+    def _tree_lines(
+        self,
+        prefix: str,
+        is_last: bool,
+        field_name: str | None,
+        is_root: bool,
+    ) -> list[str]:
+        """Generate tree lines for a numeric space node.
+
+        Renders as a single line showing field name, type (Int/Float), bounds
+        with appropriate brackets (inclusive/exclusive), and distribution.
+
+        Args:
+            prefix: Line prefix for indentation.
+            is_last: Whether this is the last sibling (determines branch character).
+            field_name: The field name (required for NumberNode).
+            is_root: Must be False (NumberNode cannot be root).
+
+        Returns:
+            Single-element list with formatted line like "lr: Float([1e-5, 0.1], log)".
+        """
+        assert not is_root, "NumberNode cannot be root"
+        assert field_name is not None, "NumberNode requires field_name"
+
+        branch = "└─ " if is_last else "├─ "
+        space = self._space
+
+        # IntSpace -> "Int", FloatSpace -> "Float"
+        kind = "Int" if isinstance(space, IntSpace) else "Float"
+
+        # Inclusive/exclusive brackets
+        left_bracket = "[" if space.low_inclusive else "("
+        right_bracket = "]" if space.high_inclusive else ")"
+
+        bounds_str = f"{left_bracket}{space.low}, {space.high}{right_bracket}"
+        label = f"{kind}({bounds_str}, {space.distribution})"
+
+        line = f"{prefix}{branch}{field_name}: {label}"
+        return [line]
 
 
 class CategoricalNode(SpaceNode):
@@ -547,6 +588,56 @@ class CategoricalNode(SpaceNode):
             # Return list of simple choices
             return list(self._children.keys())
 
+    def _tree_lines(
+        self,
+        prefix: str,
+        is_last: bool,
+        field_name: str | None,
+        is_root: bool,
+    ) -> list[str]:
+        """Generate tree lines for a categorical space node.
+
+        Renders as a header line followed by indented child nodes for each choice.
+        Each choice is rendered by delegating to its child node's _tree_lines().
+
+        Args:
+            prefix: Line prefix for indentation.
+            is_last: Whether this is the last sibling (determines branch character).
+            field_name: The field name (required for CategoricalNode).
+            is_root: Must be False (CategoricalNode cannot be root).
+
+        Returns:
+            List of lines: header + all choice lines with proper indentation.
+        """
+        assert not is_root, "CategoricalNode cannot be root"
+        assert field_name is not None, "CategoricalNode requires field_name"
+
+        lines: list[str] = []
+
+        # First line: "<prefix>├─ field_name: Categorical"
+        branch = "└─ " if is_last else "├─ "
+        header_line = f"{prefix}{branch}{field_name}: Categorical"
+        lines.append(header_line)
+
+        # All choice lines will sit under this node.
+        # Their prefix is derived from THIS node's position.
+        choice_parent_prefix = child_tree_prefix(prefix, is_last)
+
+        num_choices = len(self._children)
+
+        for idx, child_node in enumerate(self._children.values()):
+            last_choice = idx == num_choices - 1
+            lines.extend(
+                child_node._tree_lines(
+                    prefix=choice_parent_prefix,
+                    is_last=last_choice,
+                    field_name=None,
+                    is_root=False,
+                )
+            )
+
+        return lines
+
 
 class ConditionalNode(SpaceNode):
     """Node for conditional spaces that depend on other parameters.
@@ -817,3 +908,57 @@ class ConditionalNode(SpaceNode):
             template["false"] = false_template
 
         return template if template else None
+
+    def _tree_lines(
+        self,
+        prefix: str,
+        is_last: bool,
+        field_name: str | None,
+        is_root: bool,
+    ) -> list[str]:
+        """Generate tree lines for a conditional space node.
+
+        Renders as a header showing the condition, followed by indented true and
+        false branch nodes. The condition is rendered using its render() method.
+
+        Args:
+            prefix: Line prefix for indentation.
+            is_last: Whether this is the last sibling (determines branch character).
+            field_name: The field name (required for ConditionalNode).
+            is_root: Must be False (ConditionalNode cannot be root).
+
+        Returns:
+            List of lines: header + true branch + false branch with proper indentation.
+        """
+        assert not is_root, "ConditionalNode cannot be root"
+        assert field_name is not None, "ConditionalNode requires field_name"
+
+        lines: list[str] = []
+        label = f"Conditional (if {self._space.condition.render()})"
+
+        # Header for this field
+        branch = "└─ " if is_last else "├─ "
+        header_line = f"{prefix}{branch}{field_name}: {label}"
+        lines.append(header_line)
+
+        # Prefix for children of this Conditional node
+        branch_parent_prefix = child_tree_prefix(prefix, is_last)
+
+        lines.extend(
+            self._true_node._tree_lines(
+                prefix=branch_parent_prefix,
+                is_last=False,
+                field_name="true",
+                is_root=False,
+            )
+        )
+
+        lines.extend(
+            self._false_node._tree_lines(
+                prefix=branch_parent_prefix,
+                is_last=True,
+                field_name="false",
+                is_root=False,
+            )
+        )
+        return lines

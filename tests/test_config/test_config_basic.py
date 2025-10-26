@@ -5,6 +5,7 @@ from typing import Literal
 from pydantic import Field
 import pytest
 
+import spax as sp
 from spax import Categorical, Conditional, Config, Float, Int
 from spax.spaces import EqualsTo, FieldCondition
 
@@ -501,3 +502,97 @@ class TestConfigWithConditionals:
         # Mode is "simple", value=50 is out of range for false branch
         with pytest.raises(ValueError):
             MyConfig(mode="simple", value=50)
+
+
+class TestConfigGetTree:
+    """Test Config.get_tree() convenience method."""
+
+    def test_get_tree_returns_string(self):
+        """Test that get_tree() returns a string."""
+
+        class SimpleConfig(sp.Config):
+            lr: float = sp.Float(ge=1e-5, le=1e-1)
+
+        tree = SimpleConfig.get_tree()
+        assert isinstance(tree, str)
+        assert "SimpleConfig" in tree
+        assert "lr:" in tree
+
+    def test_get_tree_with_multiple_fields(self):
+        """Test get_tree() with multiple fields."""
+
+        class MultiFieldConfig(sp.Config):
+            lr: float = sp.Float(ge=1e-5, le=1e-1)
+            layers: int = sp.Int(ge=1, le=10)
+            optimizer: str = sp.Categorical(["adam", "sgd"])
+
+        tree = MultiFieldConfig.get_tree()
+        assert "MultiFieldConfig" in tree
+        assert "lr:" in tree
+        assert "layers:" in tree
+        assert "optimizer:" in tree
+        assert "Categorical" in tree
+
+    def test_get_tree_without_override(self):
+        """Test get_tree() without overrides shows full space."""
+
+        class TestConfig(sp.Config):
+            layers: int = sp.Int(ge=1, le=10)
+
+        tree = TestConfig.get_tree()
+        assert "[1, 10]" in tree
+
+    def test_get_tree_with_override(self):
+        """Test get_tree() with overrides shows narrowed space."""
+
+        class TestConfig(sp.Config):
+            layers: int = sp.Int(ge=1, le=10)
+
+        tree = TestConfig.get_tree(override={"layers": {"ge": 5, "le": 7}})
+        assert "[5, 7]" in tree
+        # Should NOT show the original bounds
+        assert "[1, 10]" not in tree
+
+    def test_get_tree_with_nested_config(self):
+        """Test get_tree() with nested configurations."""
+
+        class InnerConfig(sp.Config):
+            hidden_size: int = sp.Int(ge=64, le=512)
+
+        class OuterConfig(sp.Config):
+            lr: float = sp.Float(ge=1e-5, le=1e-1)
+            model: InnerConfig
+
+        tree = OuterConfig.get_tree()
+        assert "OuterConfig" in tree
+        assert "InnerConfig" in tree
+        assert "hidden_size:" in tree
+
+    def test_get_tree_with_conditional(self):
+        """Test get_tree() with conditional fields."""
+
+        class CondConfig(sp.Config):
+            use_dropout: bool = sp.Categorical([True, False])
+            dropout_rate: float = sp.Conditional(
+                sp.FieldCondition("use_dropout", sp.EqualsTo(True)),
+                true=sp.Float(gt=0.0, lt=0.5),
+                false=0.0,
+            )
+
+        tree = CondConfig.get_tree()
+        assert "CondConfig" in tree
+        assert "use_dropout:" in tree
+        assert "dropout_rate:" in tree
+        assert "Conditional" in tree
+        assert "use_dropout == True" in tree
+
+    def test_get_tree_matches_node_get_tree(self):
+        """Test that Config.get_tree() matches node.get_tree() output."""
+
+        class TestConfig(sp.Config):
+            lr: float = sp.Float(ge=1e-5, le=1e-1)
+            layers: int = sp.Int(ge=1, le=10)
+
+        config_tree = TestConfig.get_tree()
+        node_tree = TestConfig._node.get_tree()
+        assert config_tree == node_tree

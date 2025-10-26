@@ -63,6 +63,17 @@ class EqualsTo(ObjectCondition):
         """The target value to compare against."""
         return self._value
 
+    def render(self, field_name: str) -> str:
+        """Render as 'field_name == value'.
+
+        Args:
+            field_name: The field being compared.
+
+        Returns:
+            Equality comparison string.
+        """
+        return f"{field_name} == {self.value!r}"
+
     def __call__(self, value: Any) -> bool:
         """Check if value equals the target value.
 
@@ -114,6 +125,17 @@ class NotEqualsTo(ObjectCondition):
     def value(self) -> Any:
         """The target value to compare against."""
         return self._value
+
+    def render(self, field_name: str) -> str:
+        """Render as 'field_name != value'.
+
+        Args:
+            field_name: The field being compared.
+
+        Returns:
+            Inequality comparison string.
+        """
+        return f"{field_name} != {self.value!r}"
 
     def __call__(self, value: Any) -> bool:
         """Check if value does not equal the target value.
@@ -168,6 +190,17 @@ class In(ObjectCondition):
         """The set of allowed values."""
         return self._values
 
+    def render(self, field_name: str) -> str:
+        """Render as 'field_name in [value1, value2, ...]'.
+
+        Args:
+            field_name: The field being checked for membership.
+
+        Returns:
+            Membership test string with all possible values.
+        """
+        return f"{field_name} in [{', '.join([repr(v) for v in self.values])}]"
+
     def __call__(self, value: Any) -> bool:
         """Check if value is in the allowed values.
 
@@ -220,6 +253,17 @@ class NotIn(ObjectCondition):
     def values(self) -> list[Any] | set[Any] | tuple[Any, ...]:
         """The set of disallowed values."""
         return self._values
+
+    def render(self, field_name: str) -> str:
+        """Render as 'field_name not in [value1, value2, ...]'.
+
+        Args:
+            field_name: The field being checked for non-membership.
+
+        Returns:
+            Negative membership test string with all excluded values.
+        """
+        return f"{field_name} not in [{', '.join([repr(v) for v in self.values])}]"
 
     def __call__(self, value: Any) -> bool:
         """Check if value is not in the disallowed values.
@@ -285,6 +329,18 @@ class SmallerThan(ObjectCondition):
     def or_equals(self) -> bool:
         """Whether equality is included (<=) or not (<)."""
         return self._or_equals
+
+    def render(self, field_name: str) -> str:
+        """Render as 'field_name < value' or 'field_name <= value'.
+
+        Args:
+            field_name: The field being compared.
+
+        Returns:
+            Less-than comparison string with appropriate operator.
+        """
+        op = "<=" if self.or_equals else "<"
+        return f"{field_name} {op} {repr(self.value)}"
 
     def __call__(self, value: Any) -> bool:
         """Check if value is smaller than the threshold.
@@ -355,6 +411,18 @@ class LargerThan(ObjectCondition):
         """Whether equality is included (>=) or not (>)."""
         return self._or_equals
 
+    def render(self, field_name: str) -> str:
+        """Render as 'field_name > value' or 'field_name >= value'.
+
+        Args:
+            field_name: The field being compared.
+
+        Returns:
+            Greater-than comparison string with appropriate operator.
+        """
+        op = ">=" if self.or_equals else ">"
+        return f"{field_name} {op} {repr(self.value)}"
+
     def __call__(self, value: Any) -> bool:
         """Check if value is larger than the threshold.
 
@@ -424,6 +492,23 @@ class IsInstance(ObjectCondition):
         """The type(s) to check against."""
         return self._class_or_tuple
 
+    def render(self, field_name: str) -> str:
+        """Render as 'isinstance(field_name, Type)' or 'isinstance(field_name, (Type1, Type2))'.
+
+        Args:
+            field_name: The field being type-checked.
+
+        Returns:
+            isinstance() call string with type name(s).
+        """
+        if isinstance(self._class_or_tuple, type):
+            class_or_tuple_string = self._class_or_tuple.__name__
+        else:
+            class_or_tuple_string = (
+                f"({', '.join([c.__name__ for c in self._class_or_tuple])})"
+            )
+        return f"isinstance({field_name}, {class_or_tuple_string})"
+
     def __call__(self, value: Any) -> bool:
         """Check if value is an instance of the type(s).
 
@@ -470,6 +555,20 @@ class Lambda(ObjectCondition):
     def func(self) -> Callable[[Any], bool]:
         """The function that evaluates the condition."""
         return self._func
+
+    def render(self, field_name: str) -> str:
+        """Render as 'lambda field_name' indicating custom logic.
+
+        Cannot show the actual lambda body, so this serves as a marker that
+        custom evaluation logic is applied to the field.
+
+        Args:
+            field_name: The field being evaluated by the lambda.
+
+        Returns:
+            Generic lambda indicator string.
+        """
+        return f"lambda {field_name}"
 
     def __call__(self, value: Any) -> bool:
         """Evaluate the lambda function on the value.

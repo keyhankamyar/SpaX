@@ -20,6 +20,7 @@ from spax.spaces import (
     Space,
     infer_space_from_field_info,
 )
+from spax.utils import child_tree_prefix
 
 from .base import Node
 from .fixed import FixedNode
@@ -593,3 +594,76 @@ class ConfigNode(Node):
                 template[field_name] = child_template
 
         return template
+
+    def _summary(self) -> str:
+        """
+        One-line summary for this node, the class name.
+        """
+        return self._config_class.__name__
+
+    def _tree_lines(
+        self,
+        prefix: str,
+        is_last: bool,
+        field_name: str | None,
+        is_root: bool,
+    ) -> list[str]:
+        """Generate tree lines for a config node and all its fields.
+
+        Renders as a header showing the Config class name, followed by all child
+        fields in dependency order. Root configs don't show a branch character.
+        Nested configs show their field name and class name.
+
+        Args:
+            prefix: Line prefix for indentation.
+            is_last: Whether this is the last sibling (determines branch character).
+            field_name: The field name for nested configs, or None for root.
+            is_root: Whether this is the top-level ConfigNode.
+
+        Returns:
+            List of lines: header + all child field lines in dependency order.
+        """
+        label = self._summary()
+
+        # 1. Header line for THIS node
+        if is_root:
+            # Top-level node: just "ConfigClassName"
+            header_line = f"{label}"
+            # Children of root should start with no leading prefix (so first level
+            # starts at column 0 with "├─ ..."). We'll handle that below by
+            # *not* expanding prefix yet.
+            base_child_prefix = prefix
+        else:
+            # Non-root node: we show the field name and the config class
+            branch = "└─ " if is_last else "├─ "
+
+            if field_name:
+                header_line = f"{prefix}{branch}{field_name}: {label}"
+            else:
+                header_line = f"{prefix}{branch}{label}"
+
+            # Children of this node inherit a continued prefix.
+            # If this node was the last child, children get spaces.
+            # Otherwise they get a vertical guide.
+            base_child_prefix = child_tree_prefix(prefix, is_last)
+
+        lines: list[str] = [header_line]
+
+        # 2. Render children in dependency order
+        ordered_children = list(self.ordered_children())
+        total = len(ordered_children)
+
+        for idx, (child_field, child_node) in enumerate(ordered_children):
+            child_is_last = idx == (total - 1)
+
+            # Delegate to the child's own renderer
+            child_lines = child_node._tree_lines(
+                prefix=base_child_prefix,
+                is_last=child_is_last,
+                field_name=child_field,
+                is_root=False,
+            )
+
+            lines.extend(child_lines)
+
+        return lines
