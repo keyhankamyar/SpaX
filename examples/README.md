@@ -47,14 +47,17 @@ Build complex configurations from modular, reusable components:
 
 ---
 
-### 🚧 03. Serialization & Persistence (Coming Soon)
+### ✅ 03. Serialization & Persistence
 **File:** `03_serialization.ipynb`
 
 Save and load configurations in multiple formats:
 - JSON, YAML, and TOML serialization
-- Loading configurations from files
-- Handling nested configs in serialization
-- Best practices for experiment tracking
+- Handling nested and polymorphic configs with type discriminators
+- Error handling during deserialization
+- Practical workflow for experiment reproducibility
+- Format comparison and selection guide
+
+**Perfect for:** Making experiments reproducible and sharing configs with your team
 
 ---
 
