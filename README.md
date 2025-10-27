@@ -826,6 +826,8 @@ mypy spax
 - Update documentation for user-facing changes
 - Keep PRs focused and atomic
 
+See [CONTRIBUTING.md](CONTRIBUTING.md) for more information.
+
 ---
 
 ## 📎 Citation
