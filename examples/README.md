@@ -87,18 +87,6 @@ Progressive search space narrowing based on experimental results:
 
 ---
 
-### 🚧 06. Advanced Validation & Constraints (Coming Soon)
-**File:** `06_advanced_validation.ipynb`
-
-Use SpaX for complex validation beyond ML use cases:
-- Custom validation rules and constraints
-- Business logic enforcement
-- Hard requirements and soft preferences
-- Non-ML applications of SpaX
-- Building robust configuration systems
-
----
-
 ## 🚀 Getting Started
 
 ### Prerequisites
