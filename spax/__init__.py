@@ -1,4 +1,4 @@
-"""SpaX: Search space eXploration.
+"""SpaX: Pythonic, type-safe search space definition and exploration.
 
 SpaX is a library for defining, exploring, visualizing, and optimizing search
 spaces for hyperparameter optimization, neural architecture search, and other
@@ -20,41 +20,6 @@ Key Features:
 - Integration with HPO libraries (Optuna, etc.)
 - Multiple serialization formats (JSON, YAML, TOML)
 - Override system for iterative space narrowing
-
-Quick Start:
------------
-    >>> import spax as sp
-    >>>
-    >>> # Define a searchable configuration
-    >>> class MyConfig(sp.Config):
-    ...     learning_rate: float = sp.Float(ge=1e-5, le=1e-1, distribution='log')
-    ...     num_layers: int = sp.Int(ge=1, le=10)
-    ...     optimizer: str = sp.Categorical(["adam", "sgd", "rmsprop"])
-    ...     use_dropout: bool
-    ...     dropout_rate: float = sp.Conditional(
-    ...         sp.FieldCondition("use_dropout", sp.EqualsTo(True)),
-    ...         true=sp.Float(gt=0.0, lt=0.5),
-    ...         false=0.0
-    ...     )
-    >>>
-    >>> # Sample random configurations
-    >>> config = MyConfig.random(seed=42)
-    >>> print(config.learning_rate, config.num_layers, config.optimizer)
-    >>>
-    >>> # Apply overrides to narrow search space
-    >>> override = {"num_layers": {"ge": 5, "le": 7}}
-    >>> config = MyConfig.random(seed=42, override=override)
-    >>>
-    >>> # Integration with Optuna
-    >>> import optuna
-    >>>
-    >>> def objective(trial):
-    ...     sampler = sp.TrialSampler(trial)
-    ...     config = MyConfig.random(sampler=sampler)
-    ...     return train_and_evaluate(config)
-    >>>
-    >>> study = optuna.create_study(direction="maximize")
-    >>> study.optimize(objective, n_trials=100)
 
 For more information, see the documentation at https://github.com/keyhankamyar/SpaX
 """

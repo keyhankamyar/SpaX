@@ -5,7 +5,7 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "spax"
 version = "0.2.0"
-description = "Declarative search-space definition & exploration for ML (HPO, NAS, configs)"
+description = "Declarative search-space definition & exploration"
 readme = "README.md"
 requires-python = ">=3.11"
 
