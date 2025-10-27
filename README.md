@@ -1,3 +1,12 @@
+<!-- 
+SpaX - Hyperparameter Optimization | Neural Architecture Search | ML Experiment Tracking
+Python library for type-safe search space definition, hyperparameter tuning, and ML configuration management.
+Keywords: HPO, hyperparameter optimization, neural architecture search, NAS, AutoML, Optuna integration, 
+Pydantic configuration, conditional parameters, experiment tracking, MLOps, PyTorch, TensorFlow, 
+machine learning configuration, parameter sampling, Bayesian optimization, grid search, random search,
+reproducible experiments, type-safe ML, declarative configuration, search space exploration,
+model tuning, hyperparameter sweep, configuration validation, ML pipeline, deep learning experiments
+-->
 <div align="center">
 
 # SpaX
