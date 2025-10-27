@@ -293,6 +293,18 @@ class Config(BaseModel, validate_assignment=True):
         return cls._node.get_override_template()
 
     @classmethod
+    def get_space_hash(cls, override: dict[str, Any] | None = None) -> str:
+        """Get a SHA256 hash of the search space structure.
+
+        This hash changes when the search space structure changes, allowing
+        detection of configuration changes between experiments.
+
+        Returns:
+            Hexadecimal hash string.
+        """
+        return cls.get_node(override).get_space_hash()
+
+    @classmethod
     def get_tree(cls, override: dict[str, Any] | None = None) -> str:
         """Get an ASCII tree visualization of the configuration structure.
 
