@@ -1,8 +1,8 @@
-<!-- 
+<!--
 SpaX - Hyperparameter Optimization | Neural Architecture Search | ML Experiment Tracking
 Python library for type-safe search space definition, hyperparameter tuning, and ML configuration management.
-Keywords: HPO, hyperparameter optimization, neural architecture search, NAS, AutoML, Optuna integration, 
-Pydantic configuration, conditional parameters, experiment tracking, MLOps, PyTorch, TensorFlow, 
+Keywords: HPO, hyperparameter optimization, neural architecture search, NAS, AutoML, Optuna integration,
+Pydantic configuration, conditional parameters, experiment tracking, MLOps, PyTorch, TensorFlow,
 machine learning configuration, parameter sampling, Bayesian optimization, grid search, random search,
 reproducible experiments, type-safe ML, declarative configuration, search space exploration,
 model tuning, hyperparameter sweep, configuration validation, ML pipeline, deep learning experiments
@@ -207,10 +207,10 @@ from pydantic import Field
 class InferredConfig(sp.Config):
     # Literal → CategoricalSpace
     activation: Literal["relu", "gelu", "silu"]
-    
+
     # bool → CategoricalSpace([True, False])
     use_norm: bool
-    
+
     # Field with bounds → NumericSpace
     hidden_dim: int = Field(gt=64, lt=1024)
     learning_rate: float = Field(ge=1e-5, le=1e-1)
@@ -241,14 +241,14 @@ Define parameters that only exist or change based on other parameters. SpaX hand
 class ConditionalConfig(sp.Config):
     use_augmentation: bool
     optimizer: str = sp.Categorical(["adam", "sgd"])
-    
+
     # Only exists when use_augmentation=True
     aug_strength: float = sp.Conditional(
         sp.FieldCondition("use_augmentation", sp.EqualsTo(True)),
         true=sp.Float(ge=0.1, le=0.9),
         false=0.0,
     )
-    
+
     # SGD-specific parameter
     momentum: float = sp.Conditional(
         sp.FieldCondition("optimizer", sp.EqualsTo("sgd")),
@@ -325,7 +325,7 @@ class ResNet(BaseModel):
     # Add ResNet-specific parameters
     use_bottleneck: bool
     stride: int = sp.Categorical([1, 2])
-    
+
     # Override parent's hidden_dim with different range
     hidden_dim: int = sp.Int(ge=128, le=2048)
 ```
@@ -358,7 +358,7 @@ if isinstance(config.encoder, TransformerEncoder):
 ```python
 class DeepConfig(sp.Config):
     model: ModelConfig
-    
+
     # Condition on nested field
     use_gradient_checkpointing: bool = sp.Conditional(
         sp.FieldCondition("model.num_layers", sp.LargerThan(8)),
@@ -590,7 +590,7 @@ For complex dependencies that can't be expressed with simple conditions:
 class ResourceConfig(sp.Config):
     num_gpus: int = sp.Int(ge=1, le=8)
     batch_size_per_gpu: int = sp.Int(ge=8, le=128)
-    
+
     # Condition: total batch size must be reasonable
     use_gradient_accumulation: bool = sp.Conditional(
         sp.MultiFieldLambdaCondition(
@@ -600,7 +600,7 @@ class ResourceConfig(sp.Config):
         true=True,
         false=False,
     )
-    
+
     accumulation_steps: int = sp.Conditional(
         sp.FieldCondition("use_gradient_accumulation", sp.EqualsTo(True)),
         true=sp.Int(ge=2, le=8),
@@ -613,13 +613,13 @@ class ResourceConfig(sp.Config):
 class AdvancedConfig(sp.Config):
     model: ModelConfig
     optimizer: OptimizerConfig
-    
+
     # Custom logic across nested fields
     use_mixed_precision: bool = sp.Conditional(
         sp.MultiFieldLambdaCondition(
             ["model.num_layers", "optimizer.learning_rate"],
             lambda data: (
-                data["model.num_layers"] > 6 
+                data["model.num_layers"] > 6
                 and data["optimizer.learning_rate"] < 1e-3
             ),
         ),
@@ -645,7 +645,7 @@ class EncoderLayerConfig(sp.Config):
 class ModelConfig(sp.Config):
     encoder: EncoderLayerConfig
     num_layers: int = sp.Int(ge=2, le=12)
-    
+
     # Condition on deeply nested field
     use_gradient_checkpointing: bool = sp.Conditional(
         sp.FieldCondition("encoder.attention.num_heads", sp.LargerThan(8)),
@@ -690,7 +690,7 @@ class TrainingConfig(sp.Config):
 # Load override and use
 with open("experiments/phase2_refined.json") as f:
     override = json.load(f)
-    
+
 config = TrainingConfig.random(seed=42, override=override)
 # Or with Optuna
 config = TrainingConfig.from_trial(trial, override=override)

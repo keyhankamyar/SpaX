@@ -155,7 +155,7 @@ lint.ignore = ["E501","B008","B905"]
 
 [tool.ruff.lint.per-file-ignores]
 "__init__.py" = ["F401"]
-"tests/*" = ["ARG"]
+"tests/*" = ["ARG", "UP038"]
 
 [tool.mypy]
 python_version = "3.12"
