@@ -611,7 +611,7 @@ class ConfigNode(Node):
         """Generate tree lines for a config node and all its fields.
 
         Renders as a header showing the Config class name, followed by all child
-        fields in dependency order. Root configs don't show a branch character.
+        fields. Root configs don't show a branch character.
         Nested configs show their field name and class name.
 
         Args:
