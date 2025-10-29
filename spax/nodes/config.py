@@ -621,7 +621,7 @@ class ConfigNode(Node):
             is_root: Whether this is the top-level ConfigNode.
 
         Returns:
-            List of lines: header + all child field lines in dependency order.
+            List of lines: header + all child field lines.
         """
         label = self._summary()
 
@@ -649,11 +649,10 @@ class ConfigNode(Node):
 
         lines: list[str] = [header_line]
 
-        # 2. Render children in dependency order
-        ordered_children = list(self.ordered_children())
-        total = len(ordered_children)
+        # 2. Render children
+        total = len(self._children)
 
-        for idx, (child_field, child_node) in enumerate(ordered_children):
+        for idx, (child_field, child_node) in enumerate(self._children.items()):
             child_is_last = idx == (total - 1)
 
             # Delegate to the child's own renderer
