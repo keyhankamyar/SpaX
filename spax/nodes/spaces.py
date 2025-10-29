@@ -624,17 +624,19 @@ class CategoricalNode(SpaceNode):
         choice_parent_prefix = child_tree_prefix(prefix, is_last)
 
         num_choices = len(self._children)
+        weights = self._space.weights
 
         for idx, child_node in enumerate(self._children.values()):
             last_choice = idx == num_choices - 1
-            lines.extend(
-                child_node._tree_lines(
-                    prefix=choice_parent_prefix,
-                    is_last=last_choice,
-                    field_name=None,
-                    is_root=False,
-                )
+            new_lines = child_node._tree_lines(
+                prefix=choice_parent_prefix,
+                is_last=last_choice,
+                field_name=None,
+                is_root=False,
             )
+            if weights[idx] != 1:
+                new_lines[0] = new_lines[0] + f" (weight: {weights[idx]})"
+            lines.extend(new_lines)
 
         return lines
 
